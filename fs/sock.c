@@ -1203,8 +1203,8 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
     if (is_netlink_route(sock)) {
         if (!sock->socket.netlink_pending || sock->socket.netlink_response == NULL)
             return _EAGAIN;
-        size_t copy_len = len < sock->socket.netlink_response_len
-            ? len : sock->socket.netlink_response_len;
+        size_t response_len = sock->socket.netlink_response_len;
+        size_t copy_len = len < response_len ? len : response_len;
         if (user_write(buffer_addr, sock->socket.netlink_response, copy_len))
             return _EFAULT;
         if (sockaddr_addr != 0 && sockaddr_len_addr != 0) {
@@ -1219,8 +1219,9 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
             if (user_put(sockaddr_len_addr, out_len))
                 return _EFAULT;
         }
-        netlink_clear_response(sock);
-        return copy_len;
+        if (!(flags & MSG_PEEK_))
+            netlink_clear_response(sock);
+        return (flags & MSG_TRUNC_) ? response_len : copy_len;
     }
 
     int real_flags = sock_flags_to_real(flags);
@@ -1645,7 +1646,8 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         if (user_get(msg_fake.msg_iov, iov))
             return _EFAULT;
 
-        size_t remaining = sock->socket.netlink_response_len;
+        size_t response_len = sock->socket.netlink_response_len;
+        size_t remaining = response_len;
         size_t off = 0;
         for (size_t i = 0; i < msg_fake.msg_iovlen && remaining != 0; i++) {
             size_t chunk = iov[i].len < remaining ? iov[i].len : remaining;
@@ -1666,8 +1668,9 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         msg_fake.msg_flags = remaining != 0 ? MSG_TRUNC_ : 0;
         if (user_put(msghdr_addr, msg_fake))
             return _EFAULT;
-        size_t result = off;
-        netlink_clear_response(sock);
+        size_t result = (flags & MSG_TRUNC_) ? response_len : off;
+        if (!(flags & MSG_PEEK_))
+            netlink_clear_response(sock);
         return result;
     }
 
