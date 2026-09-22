@@ -62,3 +62,22 @@ jobs:
           run_ip addr addr
           run_ip link link
           run_ip route route
+
+      - name: Install Nmap in guest
+        timeout-minutes: 4
+        run: |
+          set -euxo pipefail
+          grep -E '^nameserver' /etc/resolv.conf | head -1 | ./build/ish -f netlink-rootfs /bin/sed -n 'w /etc/resolv.conf'
+          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap
+
+      - name: Exercise Nmap TCP connect scan
+        timeout-minutes: 2
+        run: |
+          set +e
+          timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -p 22,80,443 127.0.0.1 >nmap.txt 2>nmap.strace
+          rc=$?
+          set -e
+          cat nmap.txt || true
+          echo '--- last 300 Nmap stderr/strace lines ---'
+          tail -n 300 nmap.strace || true
+          exit "$rc"
