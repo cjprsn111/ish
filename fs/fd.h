@@ -44,6 +44,12 @@ struct fd {
             int type;
             int protocol;
 
+            // State for virtual Linux NETLINK_ROUTE sockets.
+            uint32_t netlink_pid;
+            uint32_t netlink_groups;
+            uint32_t netlink_seq;
+            int netlink_pending;
+
             // These are only used as strong references, to keep the inode
             // alive while there is a listener.
             struct inode_data *unix_name_inode;

@@ -39,6 +39,27 @@ struct sockaddr_max_ {
     char data[SOCKADDR_DATA_MAX];
 };
 
+// Minimal Linux Netlink ABI. iOS/Darwin has no AF_NETLINK, so NETLINK_ROUTE
+// is emulated inside iSH rather than forwarded to a host socket.
+struct sockaddr_nl_ {
+    uint16_t family;
+    uint16_t pad;
+    uint32_t pid;
+    uint32_t groups;
+};
+
+struct nlmsghdr_ {
+    uint32_t len;
+    uint16_t type;
+    uint16_t flags;
+    uint32_t seq;
+    uint32_t pid;
+};
+
+#define NLMSG_NOOP_ 1
+#define NLMSG_ERROR_ 2
+#define NLMSG_DONE_ 3
+
 size_t sockaddr_size(void *p);
 // result comes from malloc
 struct sockaddr *sockaddr_to_real(void *p);
@@ -76,9 +97,13 @@ struct scm {
 #define PF_LOCAL_ 1
 #define PF_INET_ 2
 #define PF_INET6_ 10
+#define PF_NETLINK_ 16
 #define AF_LOCAL_ PF_LOCAL_
 #define AF_INET_ PF_INET_
 #define AF_INET6_ PF_INET6_
+#define AF_NETLINK_ PF_NETLINK_
+
+#define NETLINK_ROUTE_ 0
 static inline int sock_family_to_real(int fake) {
     switch (fake) {
         case PF_LOCAL_: return PF_LOCAL;
