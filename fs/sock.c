@@ -90,7 +90,9 @@ static int netlink_add_attr(struct netlink_builder *b, size_t start,
     attr->type = type;
     memcpy(attr + 1, data, data_len);
     hdr = (void *) (b->data + start);
-    hdr->len = (pos - start) + attr_len;
+    // Linux advances nlmsg_len to the aligned end of each rtattr. The rtattr
+    // itself keeps its unaligned payload length in rta_len.
+    hdr->len = end - start;
     b->len = end;
     return 0;
 }
