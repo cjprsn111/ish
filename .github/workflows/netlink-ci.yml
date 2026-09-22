@@ -35,7 +35,7 @@ jobs:
 
       - name: Exercise virtual NETLINK_ROUTE
         run: |
-          set -eux
+          set -euxo pipefail
           ./build/ish -f netlink-rootfs /bin/busybox ip addr | tee ip-addr.txt
           ./build/ish -f netlink-rootfs /bin/busybox ip link | tee ip-link.txt
           ./build/ish -f netlink-rootfs /bin/busybox ip route | tee ip-route.txt
