@@ -64,6 +64,18 @@ jobs:
           run_ip route route
           run_ip route-get route get 1.1.1.1
 
+          # Guard the behavior that made the original tools usable, not just
+          # their exit codes. Keep route-get permissive until its destination
+          # attribute is made Linux-accurate in the implementation.
+          grep -Eq '(^|[[:space:]])lo:' ip-addr.txt
+          grep -Fq '127.0.0.1/8' ip-addr.txt
+          grep -Eq '(^|[[:space:]])lo:' ip-link.txt
+          test -s ip-route.txt
+          grep -Eq 'dev [^ ]+' ip-route.txt
+          test -s ip-route-get.txt
+          grep -Eq 'dev [^ ]+' ip-route-get.txt
+          grep -Eq 'src [0-9a-fA-F:.]+' ip-route-get.txt
+
       - name: Install Nmap in guest
         timeout-minutes: 4
         run: |
@@ -81,4 +93,9 @@ jobs:
           cat nmap.txt || true
           echo '--- last 300 Nmap stderr/strace lines ---'
           tail -n 300 nmap.strace || true
-          exit "$rc"
+          if [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+          grep -Fq 'Nmap scan report for localhost (127.0.0.1)' nmap.txt
+          grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' nmap.txt
+          grep -Fq 'Nmap done: 1 IP address (1 host up)' nmap.txt
