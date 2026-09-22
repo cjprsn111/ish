@@ -60,6 +60,83 @@ struct nlmsghdr_ {
 #define NLMSG_ERROR_ 2
 #define NLMSG_DONE_ 3
 
+#define NLM_F_REQUEST_ 0x1
+#define NLM_F_MULTI_ 0x2
+#define NLM_F_ACK_ 0x4
+#define NLM_F_ROOT_ 0x100
+#define NLM_F_MATCH_ 0x200
+#define NLM_F_DUMP_ (NLM_F_ROOT_ | NLM_F_MATCH_)
+
+#define RTM_NEWLINK_ 16
+#define RTM_GETLINK_ 18
+#define RTM_NEWADDR_ 20
+#define RTM_GETADDR_ 22
+#define RTM_NEWROUTE_ 24
+#define RTM_GETROUTE_ 26
+
+struct ifinfomsg_ {
+    uint8_t family;
+    uint8_t pad;
+    uint16_t type;
+    int32_t index;
+    uint32_t flags;
+    uint32_t change;
+};
+
+struct ifaddrmsg_ {
+    uint8_t family;
+    uint8_t prefixlen;
+    uint8_t flags;
+    uint8_t scope;
+    uint32_t index;
+};
+
+struct rtmsg_ {
+    uint8_t family;
+    uint8_t dst_len;
+    uint8_t src_len;
+    uint8_t tos;
+    uint8_t table;
+    uint8_t protocol;
+    uint8_t scope;
+    uint8_t type;
+    uint32_t flags;
+};
+
+struct rtattr_ {
+    uint16_t len;
+    uint16_t type;
+};
+
+#define IFLA_ADDRESS_ 1
+#define IFLA_BROADCAST_ 2
+#define IFLA_IFNAME_ 3
+
+#define IFA_ADDRESS_ 1
+#define IFA_LOCAL_ 2
+#define IFA_LABEL_ 3
+#define IFA_BROADCAST_ 4
+
+#define RTA_DST_ 1
+#define RTA_SRC_ 2
+#define RTA_IIF_ 3
+#define RTA_OIF_ 4
+#define RTA_GATEWAY_ 5
+#define RTA_PRIORITY_ 6
+#define RTA_PREFSRC_ 7
+
+#define RT_TABLE_MAIN_ 254
+#define RTPROT_KERNEL_ 2
+#define RTPROT_BOOT_ 3
+#define RT_SCOPE_UNIVERSE_ 0
+#define RT_SCOPE_LINK_ 253
+#define RT_SCOPE_HOST_ 254
+#define RTN_UNICAST_ 1
+#define RTN_UNREACHABLE_ 7
+
+#define ARPHRD_ETHER_ 1
+#define ARPHRD_LOOPBACK_ 772
+
 size_t sockaddr_size(void *p);
 // result comes from malloc
 struct sockaddr *sockaddr_to_real(void *p);

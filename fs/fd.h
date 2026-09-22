@@ -49,6 +49,8 @@ struct fd {
             uint32_t netlink_groups;
             uint32_t netlink_seq;
             int netlink_pending;
+            void *netlink_response;
+            size_t netlink_response_len;
 
             // These are only used as strong references, to keep the inode
             // alive while there is a listener.
