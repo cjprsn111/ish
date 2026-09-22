@@ -34,8 +34,9 @@ jobs:
           ./build/tools/fakefsify alpine.tar.gz netlink-rootfs
 
       - name: Exercise virtual NETLINK_ROUTE
+        timeout-minutes: 3
         run: |
           set -euxo pipefail
-          ./build/ish -f netlink-rootfs /bin/busybox ip addr | tee ip-addr.txt
-          ./build/ish -f netlink-rootfs /bin/busybox ip link | tee ip-link.txt
-          ./build/ish -f netlink-rootfs /bin/busybox ip route | tee ip-route.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip addr | tee ip-addr.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip link | tee ip-link.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip route | tee ip-route.txt
