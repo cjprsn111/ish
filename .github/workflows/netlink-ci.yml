@@ -5,6 +5,10 @@ on:
     branches: [CJ-Netlink]
   workflow_dispatch:
 
+concurrency:
+  group: netlink-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   netlink-e2e:
     runs-on: ubuntu-24.04
@@ -25,7 +29,7 @@ jobs:
 
       - name: Build iSH command-line emulator
         run: |
-          meson setup build -Dengine=asbestos -Dkernel=ish
+          meson setup build -Dengine=asbestos -Dkernel=ish -Dlog=strace
           ninja -C build
 
       - name: Prepare Alpine x86 rootfs
@@ -34,9 +38,27 @@ jobs:
           ./build/tools/fakefsify alpine.tar.gz netlink-rootfs
 
       - name: Exercise virtual NETLINK_ROUTE
-        timeout-minutes: 3
+        timeout-minutes: 4
         run: |
-          set -euxo pipefail
-          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip addr | tee ip-addr.txt
-          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip link | tee ip-link.txt
-          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip route | tee ip-route.txt
+          set -euo pipefail
+
+          run_ip() {
+            name="$1"
+            shift
+            echo "=== busybox ip $* ==="
+            set +e
+            timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip "$@" >"ip-$name.txt" 2>"ip-$name.strace"
+            rc=$?
+            set -e
+            cat "ip-$name.txt" || true
+            echo "--- last 250 strace lines ---"
+            tail -n 250 "ip-$name.strace" || true
+            if [ "$rc" -ne 0 ]; then
+              echo "ip $* exited with status $rc"
+              return "$rc"
+            fi
+          }
+
+          run_ip addr addr
+          run_ip link link
+          run_ip route route
