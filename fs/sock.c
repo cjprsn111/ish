@@ -1314,16 +1314,35 @@ static void sock_translate_err(struct fd *fd, int *err) {
 }
 
 static ssize_t sock_read(struct fd *fd, void *buf, size_t size) {
-    if (is_netlink_route(fd))
-        return _EOPNOTSUPP;
+    if (is_netlink_route(fd)) {
+        if (!fd->socket.netlink_pending)
+            return _EAGAIN;
+        struct nlmsghdr_ done = {
+            .len = sizeof(done),
+            .type = NLMSG_DONE_,
+            .flags = 0,
+            .seq = fd->socket.netlink_seq,
+            .pid = 0,
+        };
+        size_t copy_len = size < sizeof(done) ? size : sizeof(done);
+        memcpy(buf, &done, copy_len);
+        fd->socket.netlink_pending = 0;
+        return copy_len;
+    }
     int err = realfs_read(fd, buf, size);
     sock_translate_err(fd, &err);
     return err;
 }
 
 static ssize_t sock_write(struct fd *fd, const void *buf, size_t size) {
-    if (is_netlink_route(fd))
-        return _EOPNOTSUPP;
+    if (is_netlink_route(fd)) {
+        if (size >= sizeof(struct nlmsghdr_)) {
+            const struct nlmsghdr_ *hdr = buf;
+            fd->socket.netlink_seq = hdr->seq;
+        }
+        fd->socket.netlink_pending = 1;
+        return size;
+    }
     int err = realfs_write(fd, buf, size);
     sock_translate_err(fd, &err);
     return err;
