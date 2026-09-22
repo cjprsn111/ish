@@ -103,6 +103,19 @@ static void netlink_clear_response(struct fd *fd) {
 }
 
 static int netlink_commit_response(struct fd *fd, struct netlink_builder *b) {
+    // Linux route-netlink replies come from kernel pid 0 in sockaddr_nl, but
+    // nlmsg_pid identifies the destination port ID. BusyBox/iproute2 checks
+    // that this matches the value returned by getsockname().
+    size_t off = 0;
+    while (off + sizeof(struct nlmsghdr_) <= b->len) {
+        struct nlmsghdr_ *hdr = (void *) (b->data + off);
+        if (hdr->len < sizeof(*hdr) || off + hdr->len > b->len)
+            break;
+        hdr->pid = fd->socket.netlink_pid != 0
+            ? fd->socket.netlink_pid : (uint32_t) current->pid;
+        off += NL_ALIGN(hdr->len);
+    }
+
     netlink_clear_response(fd);
     fd->socket.netlink_response = b->data;
     fd->socket.netlink_response_len = b->len;
