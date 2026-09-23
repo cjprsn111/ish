@@ -63,6 +63,7 @@ jobs:
           run_ip link link
           run_ip route route
           run_ip route-get route get 1.1.1.1
+          run_ip route-get-loopback route get 127.0.0.1
 
           # Guard the behavior that made the original tools usable, not just
           # their exit codes. Keep route-get permissive until its destination
@@ -75,6 +76,9 @@ jobs:
           test -s ip-route-get.txt
           grep -Eq 'dev [^ ]+' ip-route-get.txt
           grep -Eq 'src [0-9a-fA-F:.]+' ip-route-get.txt
+          test -s ip-route-get-loopback.txt
+          grep -Fq 'dev lo' ip-route-get-loopback.txt
+          grep -Fq 'src 127.0.0.1' ip-route-get-loopback.txt
 
       - name: Install Nmap in guest
         timeout-minutes: 4
