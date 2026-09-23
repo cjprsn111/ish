@@ -94,10 +94,12 @@ jobs:
           for spec in 'ip-route-get.txt|1.1.1.1' 'ip-route-get-loopback.txt|127.0.0.1' 'ip-route-get-v6-loopback.txt|::1'; do
             file=${spec%%|*}
             dst=${spec#*|}
-            if grep -Fq "$dst" "$file"; then
-              echo "PASS: $file echoes $dst"
+            # The destination must be the route result's first token. Do not
+            # mistake the same address appearing after `src` for an RTA_DST echo.
+            if awk -v dst="$dst" '$1 == dst { found=1 } END { exit !found }' "$file"; then
+              echo "PASS: $file returns destination $dst"
             else
-              echo "PENDING: $file does not yet echo $dst"
+              echo "PENDING: $file does not yet return destination $dst"
             fi
           done
 
