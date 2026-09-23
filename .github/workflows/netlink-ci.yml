@@ -90,6 +90,20 @@ jobs:
           grep -Fq 'dev lo' ip-route-get-v6-loopback.txt
           grep -Fq 'src ::1' ip-route-get-v6-loopback.txt
 
+      - name: Stress repeated NETLINK_ROUTE requests
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          # Catch response-buffer lifecycle, sequence, or poll regressions that
+          # only show up after several netlink sockets are opened in succession.
+          for i in $(seq 1 20); do
+            timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip link >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip addr >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip route >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip route get 127.0.0.1 >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip -6 route get ::1 >/dev/null
+          done
+
       - name: Install Nmap in guest
         timeout-minutes: 4
         run: |
