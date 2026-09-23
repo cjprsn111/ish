@@ -62,6 +62,8 @@ jobs:
           run_ip addr addr
           run_ip link link
           run_ip route route
+          run_ip addr-v6 -6 addr
+          run_ip route-v6 -6 route
           run_ip route-get route get 1.1.1.1
           run_ip route-get-loopback route get 127.0.0.1
           run_ip route-get-v6-loopback -6 route get ::1
@@ -74,6 +76,10 @@ jobs:
           grep -Eq '(^|[[:space:]])lo:' ip-link.txt
           test -s ip-route.txt
           grep -Eq 'dev [^ ]+' ip-route.txt
+          grep -Eq '(^|[[:space:]])lo:' ip-addr-v6.txt
+          grep -Fq '::1/128' ip-addr-v6.txt
+          test -s ip-route-v6.txt
+          grep -Eq 'dev [^ ]+' ip-route-v6.txt
           test -s ip-route-get.txt
           grep -Eq 'dev [^ ]+' ip-route-get.txt
           grep -Eq 'src [0-9a-fA-F:.]+' ip-route-get.txt
