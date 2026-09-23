@@ -69,8 +69,8 @@ jobs:
           run_ip route-get-v6-loopback -6 route get ::1
 
           # Guard the behavior that made the original tools usable, not just
-          # their exit codes. Keep route-get permissive until its destination
-          # attribute is made Linux-accurate in the implementation.
+          # their exit codes. Route-get destination echo is reported below but
+          # remains non-blocking until the isolated RTA_DST fix lands.
           grep -Eq '(^|[[:space:]])lo:' ip-addr.txt
           grep -Fq '127.0.0.1/8' ip-addr.txt
           grep -Eq '(^|[[:space:]])lo:' ip-link.txt
@@ -89,6 +89,17 @@ jobs:
           test -s ip-route-get-v6-loopback.txt
           grep -Fq 'dev lo' ip-route-get-v6-loopback.txt
           grep -Fq 'src ::1' ip-route-get-v6-loopback.txt
+
+          echo '=== route lookup destination compatibility ==='
+          for spec in 'ip-route-get.txt|1.1.1.1' 'ip-route-get-loopback.txt|127.0.0.1' 'ip-route-get-v6-loopback.txt|::1'; do
+            file=${spec%%|*}
+            dst=${spec#*|}
+            if grep -Fq "$dst" "$file"; then
+              echo "PASS: $file echoes $dst"
+            else
+              echo "PENDING: $file does not yet echo $dst"
+            fi
+          done
 
       - name: Stress repeated NETLINK_ROUTE requests
         timeout-minutes: 2
