@@ -129,3 +129,18 @@ jobs:
           grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' nmap.txt
           grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' nmap.txt
           grep -Fq 'Nmap done: 1 IP address (1 host up)' nmap.txt
+
+      - name: Stress repeated Nmap TCP connect scans
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          # Exercise repeated socket creation/connect/close cycles so a single
+          # successful scan cannot hide descriptor or socket lifecycle bugs.
+          for i in $(seq 1 5); do
+            out="nmap-stress-$i.txt"
+            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
+            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
+            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
+            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
+            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
+          done
