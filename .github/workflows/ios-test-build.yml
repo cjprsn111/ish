@@ -10,6 +10,7 @@ on:
       - 'app/**'
       - 'iSH.xcodeproj/**'
       - '.github/workflows/ios-test-build.yml'
+      - 'IPHONE_TEST.md'
 
 concurrency:
   group: cj-netlink-ios-candidate-${{ github.ref }}
@@ -106,5 +107,6 @@ jobs:
             CJ-Netlink-iSH-unsigned.ipa
             CJ-Netlink-iSH-unsigned.ipa.sha256
             CJ-Netlink-build-info.txt
+            IPHONE_TEST.md
           if-no-files-found: error
           retention-days: 14
