@@ -198,6 +198,26 @@ jobs:
             exit 1
           fi
           echo 'PASS: iproute2 resolves route interface indexes to host names'
+
+          echo '=== iproute2 Netlink error semantics ==='
+          set +e
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip link set dev lo mtu 65535 \
+            >iproute2-mutation.txt 2>iproute2-mutation.strace
+          mutation_rc=$?
+          set -e
+          cat iproute2-mutation.txt || true
+          tail -n 120 iproute2-mutation.strace || true
+          if [ "$mutation_rc" -eq 0 ]; then
+            echo 'FAIL: unsupported RTM_NEWLINK mutation unexpectedly succeeded'
+            exit 1
+          fi
+          if [ "$mutation_rc" -eq 124 ]; then
+            echo 'FAIL: unsupported RTM_NEWLINK mutation hung waiting for Netlink error'
+            exit 1
+          fi
+          grep -Eqi 'operation not supported|not supported' iproute2-mutation.strace
+          echo 'PASS: unsupported mutation returns a Linux-style Netlink protocol error'
+
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
