@@ -60,6 +60,7 @@ jobs:
           }
 
           run_ip addr addr
+          run_ip addr-v4 -4 addr
           run_ip link link
           run_ip route route
           run_ip route-v4 -4 route
@@ -71,6 +72,11 @@ jobs:
 
           grep -Eq '(^|[[:space:]])lo:' ip-addr.txt
           grep -Fq '127.0.0.1/8' ip-addr.txt
+          grep -Fq '127.0.0.1/8' ip-addr-v4.txt
+          if grep -Fq ' inet6 ' ip-addr-v4.txt; then
+            echo 'FAIL: ip -4 addr includes IPv6 addresses'
+            exit 1
+          fi
           grep -Eq '(^|[[:space:]])lo:' ip-link.txt
           test -s ip-route.txt
           grep -Eq 'dev [^ ]+' ip-route.txt
@@ -79,6 +85,10 @@ jobs:
           grep -Eq '^default([[:space:]]|$)' ip-route-v4.txt
           grep -Eq '(^|[[:space:]])lo:' ip-addr-v6.txt
           grep -Fq '::1/128' ip-addr-v6.txt
+          if grep -Fq ' inet ' ip-addr-v6.txt; then
+            echo 'FAIL: ip -6 addr includes IPv4 addresses'
+            exit 1
+          fi
           test -s ip-route-v6.txt
           grep -Eq 'dev [^ ]+' ip-route-v6.txt
           test -s ip-route-get.txt
@@ -165,6 +175,8 @@ jobs:
           }
 
           run_iproute2 addr addr
+          run_iproute2 addr-v4 -4 addr
+          run_iproute2 addr-v6 -6 addr
           run_iproute2 link link
           run_iproute2 route route
           run_iproute2 route-v4 -4 route
@@ -175,6 +187,17 @@ jobs:
 
           grep -Eq '(^|[[:space:]])lo:' iproute2-addr.txt
           grep -Fq '127.0.0.1/8' iproute2-addr.txt
+          grep -Fq '127.0.0.1/8' iproute2-addr-v4.txt
+          grep -Fq '::1/128' iproute2-addr-v6.txt
+          if grep -Fq ' inet6 ' iproute2-addr-v4.txt; then
+            echo 'FAIL: iproute2 -4 addr includes IPv6 addresses'
+            exit 1
+          fi
+          if grep -Fq ' inet ' iproute2-addr-v6.txt; then
+            echo 'FAIL: iproute2 -6 addr includes IPv4 addresses'
+            exit 1
+          fi
+          echo 'PASS: address dumps honor requested IPv4/IPv6 family'
           grep -Eq 'dev [^ ]+' iproute2-route.txt
           grep -Eq '^default([[:space:]]|$)' iproute2-route-v4.txt
           grep -Eq '^1\.1\.1\.1([[:space:]]|$)' iproute2-get-public-v4.txt
