@@ -399,6 +399,47 @@ static int netlink_probe_route(uint8_t fake_family, const void *dst,
     return *ifindex == 0 ? _ENODEV : 0;
 }
 
+static int netlink_add_default_route(struct netlink_builder *b, uint32_t seq,
+        uint8_t family) {
+    uint8_t probe_dst[16] = {};
+    size_t addr_len;
+
+    if (family == AF_INET_) {
+        const uint8_t public_v4[4] = {1, 1, 1, 1};
+        memcpy(probe_dst, public_v4, sizeof(public_v4));
+        addr_len = sizeof(public_v4);
+    } else if (family == AF_INET6_) {
+        if (inet_pton(AF_INET6, "2606:4700:4700::1111", probe_dst) != 1)
+            return _EINVAL;
+        addr_len = 16;
+    } else {
+        return 0;
+    }
+
+    unsigned index = 0;
+    uint8_t src[16] = {};
+    if (netlink_probe_route(family, probe_dst, &index, src) < 0)
+        return 0;
+
+    size_t start = netlink_start_msg(b, RTM_NEWROUTE_, NLM_F_MULTI_, seq,
+            sizeof(struct rtmsg_));
+    if (start == SIZE_MAX)
+        return _ENOMEM;
+
+    struct rtmsg_ *route = netlink_payload(b, start);
+    route->family = family;
+    route->dst_len = 0;
+    route->table = RT_TABLE_MAIN_;
+    route->protocol = RTPROT_BOOT_;
+    route->scope = RT_SCOPE_UNIVERSE_;
+    route->type = RTN_UNICAST_;
+
+    int err = netlink_add_attr(b, start, RTA_OIF_, &index, sizeof(index));
+    if (err < 0)
+        return err;
+    return netlink_add_attr(b, start, RTA_PREFSRC_, src, addr_len);
+}
+
 static int netlink_build_route_query(struct netlink_builder *b,
         const struct nlmsghdr_ *request, const uint8_t *request_data,
         size_t request_len) {
@@ -503,6 +544,12 @@ static int netlink_build_route_dump(struct netlink_builder *b, uint32_t seq,
         if (err < 0) break;
     }
     freeifaddrs(ifap);
+
+    if (err >= 0 && (requested_family == 0 || requested_family == AF_INET_))
+        err = netlink_add_default_route(b, seq, AF_INET_);
+    if (err >= 0 && (requested_family == 0 || requested_family == AF_INET6_))
+        err = netlink_add_default_route(b, seq, AF_INET6_);
+
     return err;
 }
 
