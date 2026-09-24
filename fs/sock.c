@@ -1887,6 +1887,33 @@ static int sock_setflags(struct fd *fd, dword_t flags) {
     return realfs_setflags(fd, flags);
 }
 
+#define SIOCGIFTXQLEN_ 0x8942
+#define IFREQ32_SIZE_ 32
+#define IFNAMSIZ_ 16
+
+static ssize_t sock_ioctl_size(int cmd) {
+    if (cmd == SIOCGIFTXQLEN_)
+        return IFREQ32_SIZE_;
+    return realfs_ioctl_size(cmd);
+}
+
+static int sock_ioctl(struct fd *fd, int cmd, void *arg) {
+    if (cmd == SIOCGIFTXQLEN_) {
+        // Linux i386 struct ifreq is 32 bytes: a 16-byte interface name
+        // followed by a 16-byte union. Darwin/iOS has no SIOCGIFTXQLEN
+        // equivalent, so report a neutral queue length for host interfaces.
+        char ifname[IFNAMSIZ_ + 1];
+        memcpy(ifname, arg, IFNAMSIZ_);
+        ifname[IFNAMSIZ_] = '\0';
+        if (if_nametoindex(ifname) == 0)
+            return _ENODEV;
+        int32_t qlen = 0;
+        memcpy((uint8_t *) arg + IFNAMSIZ_, &qlen, sizeof(qlen));
+        return 0;
+    }
+    return realfs_ioctl(fd, cmd, arg);
+}
+
 static int sock_close(struct fd *fd) {
     if (is_netlink_route(fd)) {
         netlink_clear_response(fd);
@@ -1922,8 +1949,8 @@ const struct fd_ops socket_fdops = {
     .poll = sock_poll,
     .getflags = sock_getflags,
     .setflags = sock_setflags,
-    .ioctl_size = realfs_ioctl_size,
-    .ioctl = realfs_ioctl,
+    .ioctl_size = sock_ioctl_size,
+    .ioctl = sock_ioctl,
 };
 
 #if is_gcc(8) || is_clang(21)
