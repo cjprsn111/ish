@@ -129,8 +129,15 @@ static int netlink_commit_response(struct fd *fd, struct netlink_builder *b) {
 }
 
 static int netlink_add_done(struct netlink_builder *b, uint32_t seq) {
-    return netlink_start_msg(b, NLMSG_DONE_, NLM_F_MULTI_, seq, 0) == SIZE_MAX
-        ? _ENOMEM : 0;
+    // Linux rtnetlink terminates multipart dumps with NLMSG_DONE carrying
+    // a 32-bit status value. BusyBox tolerates a header-only DONE message,
+    // but full iproute2 treats it as a truncated dump.
+    size_t start = netlink_start_msg(b, NLMSG_DONE_, NLM_F_MULTI_, seq,
+            sizeof(int32_t));
+    if (start == SIZE_MAX)
+        return _ENOMEM;
+    *(int32_t *) netlink_payload(b, start) = 0;
+    return 0;
 }
 
 static uint32_t netlink_linux_if_flags(unsigned host_flags) {
