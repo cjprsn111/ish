@@ -22,6 +22,7 @@
 #include "debug.h"
 
 #define SOCKET_TYPE_MASK 0xf
+#define SO_BINDTODEVICE_ 25
 
 const struct fd_ops socket_fdops;
 
@@ -1311,6 +1312,40 @@ int_t sys_setsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
 
     if (is_netlink_route(sock))
         return 0;
+
+    if (level == SOL_SOCKET_ && option == SO_BINDTODEVICE_) {
+        // Linux applications such as Nmap use SO_BINDTODEVICE to pin a
+        // socket to an interface. iOS exposes equivalent per-family options
+        // rather than the Linux SOL_SOCKET option.
+        if (value_len == 0)
+            return 0;
+        if (value_len > IFNAMSIZ)
+            return _EINVAL;
+        char ifname[IFNAMSIZ + 1];
+        memset(ifname, 0, sizeof(ifname));
+        memcpy(ifname, value, value_len);
+        if (ifname[0] == '\0')
+            return 0;
+        unsigned ifindex = if_nametoindex(ifname);
+        if (ifindex == 0)
+            return _ENODEV;
+#if defined(__APPLE__)
+        if (sock->socket.domain == AF_INET_) {
+#if defined(IP_BOUND_IF)
+            if (setsockopt(sock->real_fd, IPPROTO_IP, IP_BOUND_IF,
+                    &ifindex, sizeof(ifindex)) < 0)
+                return errno_map();
+#endif
+        } else if (sock->socket.domain == AF_INET6_) {
+#if defined(IPV6_BOUND_IF)
+            if (setsockopt(sock->real_fd, IPPROTO_IPV6, IPV6_BOUND_IF,
+                    &ifindex, sizeof(ifindex)) < 0)
+                return errno_map();
+#endif
+        }
+#endif
+        return 0;
+    }
 
     // ICMP6_FILTER can only be set on real SOCK_RAW
     if (level == IPPROTO_ICMPV6 && option == ICMP6_FILTER_)
