@@ -146,18 +146,30 @@ jobs:
           timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -V | tee iproute2-version.txt
           grep -Fq 'iproute2' iproute2-version.txt
 
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip addr >iproute2-addr.txt 2>iproute2-addr.strace
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip link >iproute2-link.txt 2>iproute2-link.strace
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip route >iproute2-route.txt 2>iproute2-route.strace
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -4 route >iproute2-route-v4.txt 2>iproute2-route-v4.strace
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -6 route >iproute2-route-v6.txt 2>iproute2-route-v6.strace
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip route get 127.0.0.1 >iproute2-get-v4.txt 2>iproute2-get-v4.strace
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -6 route get ::1 >iproute2-get-v6.txt 2>iproute2-get-v6.strace
+          run_iproute2() {
+            name="$1"
+            shift
+            echo "=== iproute2 ip $* ==="
+            set +e
+            timeout 20s ./build/ish -f netlink-rootfs /sbin/ip "$@" >"iproute2-$name.txt" 2>"iproute2-$name.strace"
+            rc=$?
+            set -e
+            cat "iproute2-$name.txt" || true
+            echo "--- last 300 stderr/strace lines ---"
+            tail -n 300 "iproute2-$name.strace" || true
+            if [ "$rc" -ne 0 ]; then
+              echo "iproute2 ip $* exited with status $rc"
+              return "$rc"
+            fi
+          }
 
-          cat iproute2-addr.txt
-          cat iproute2-route.txt
-          cat iproute2-get-v4.txt
-          cat iproute2-get-v6.txt
+          run_iproute2 addr addr
+          run_iproute2 link link
+          run_iproute2 route route
+          run_iproute2 route-v4 -4 route
+          run_iproute2 route-v6 -6 route
+          run_iproute2 get-v4 route get 127.0.0.1
+          run_iproute2 get-v6 -6 route get ::1
 
           grep -Eq '(^|[[:space:]])lo:' iproute2-addr.txt
           grep -Fq '127.0.0.1/8' iproute2-addr.txt
