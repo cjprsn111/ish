@@ -131,12 +131,51 @@ jobs:
             timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip -6 route get ::1 >/dev/null
           done
 
-      - name: Install Nmap in guest
+      - name: Install network tools in guest
         timeout-minutes: 4
         run: |
           set -euxo pipefail
           grep -E '^nameserver' /etc/resolv.conf | head -1 | ./build/ish -f netlink-rootfs /bin/sed -n 'w /etc/resolv.conf'
-          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap
+          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap iproute2
+
+      - name: Exercise iproute2 NETLINK_ROUTE
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -V | tee iproute2-version.txt
+          grep -Fq 'iproute2' iproute2-version.txt
+
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip addr >iproute2-addr.txt 2>iproute2-addr.strace
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip link >iproute2-link.txt 2>iproute2-link.strace
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip route >iproute2-route.txt 2>iproute2-route.strace
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -4 route >iproute2-route-v4.txt 2>iproute2-route-v4.strace
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -6 route >iproute2-route-v6.txt 2>iproute2-route-v6.strace
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip route get 127.0.0.1 >iproute2-get-v4.txt 2>iproute2-get-v4.strace
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -6 route get ::1 >iproute2-get-v6.txt 2>iproute2-get-v6.strace
+
+          cat iproute2-addr.txt
+          cat iproute2-route.txt
+          cat iproute2-get-v4.txt
+          cat iproute2-get-v6.txt
+
+          grep -Eq '(^|[[:space:]])lo:' iproute2-addr.txt
+          grep -Fq '127.0.0.1/8' iproute2-addr.txt
+          grep -Eq 'dev [^ ]+' iproute2-route.txt
+          grep -Fq '127.0.0.1' iproute2-get-v4.txt
+          grep -Fq 'dev lo' iproute2-get-v4.txt
+          grep -Fq '::1' iproute2-get-v6.txt
+          grep -Fq 'dev lo' iproute2-get-v6.txt
+
+          if grep -Eq '(^|[[:space:]])[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' iproute2-route-v6.txt; then
+            echo 'FAIL: iproute2 -6 route includes IPv4 routes'
+            exit 1
+          fi
+          if grep -Eq '(^|[[:space:]])[0-9a-fA-F]*:[0-9a-fA-F:]+' iproute2-route-v4.txt; then
+            echo 'FAIL: iproute2 -4 route includes IPv6 routes'
+            exit 1
+          fi
+          echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
       - name: Exercise Nmap TCP connect scan
         timeout-minutes: 2
