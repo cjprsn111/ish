@@ -10,7 +10,6 @@
 #include <sys/un.h>
 #ifdef __APPLE__
 #include <net/if_dl.h>
-#include <net/route.h>
 #include <sys/sysctl.h>
 #else
 #include <netpacket/packet.h>
@@ -402,6 +401,45 @@ static int netlink_probe_route(uint8_t fake_family, const void *dst,
 }
 
 #ifdef __APPLE__
+// iPhoneOS does not expose <net/route.h> to applications, but the routing
+// sysctl uses this stable Darwin routing-message ABI.
+#define DARWIN_DARWIN_RTM_VERSION 5
+#define DARWIN_DARWIN_RTF_GATEWAY 0x2
+#define DARWIN_RTF_HOST 0x4
+#define DARWIN_DARWIN_RTAX_DST 0
+#define DARWIN_DARWIN_RTAX_GATEWAY 1
+#define DARWIN_DARWIN_RTAX_MAX 8
+
+struct darwin_rt_metrics {
+    uint32_t locks;
+    uint32_t mtu;
+    uint32_t hopcount;
+    int32_t expire;
+    uint32_t recvpipe;
+    uint32_t sendpipe;
+    uint32_t ssthresh;
+    uint32_t rtt;
+    uint32_t rttvar;
+    uint32_t pksent;
+    uint32_t state;
+    uint32_t filler[3];
+};
+
+struct darwin_rt_msghdr {
+    uint16_t msglen;
+    uint8_t version;
+    uint8_t type;
+    uint16_t index;
+    int32_t flags;
+    int32_t addrs;
+    int32_t pid;
+    int32_t seq;
+    int32_t error;
+    int32_t use;
+    uint32_t inits;
+    struct darwin_rt_metrics metrics;
+};
+
 #define ROUTE_SA_ROUNDUP(len) ((len) > 0 ? (1 + (((len) - 1) | (sizeof(long) - 1))) : sizeof(long))
 
 static int netlink_host_default_gateway(uint8_t fake_family, unsigned ifindex,
@@ -426,24 +464,25 @@ static int netlink_host_default_gateway(uint8_t fake_family, unsigned ifindex,
     }
 
     int result = _ENOENT;
-    for (uint8_t *p = buf; p + sizeof(struct rt_msghdr) <= buf + len; ) {
-        struct rt_msghdr *rtm = (void *) p;
-        if (rtm->rtm_msglen < sizeof(*rtm) || p + rtm->rtm_msglen > buf + len)
+    for (uint8_t *p = buf; p + sizeof(struct darwin_rt_msghdr) <= buf + len; ) {
+        struct darwin_rt_msghdr *rtm = (void *) p;
+        if (rtm->msglen < sizeof(*rtm) || p + rtm->msglen > buf + len)
             break;
-        p += rtm->rtm_msglen;
+        p += rtm->msglen;
 
-        if (rtm->rtm_version != RTM_VERSION ||
-                (rtm->rtm_flags & RTF_GATEWAY) == 0 ||
-                (ifindex != 0 && rtm->rtm_index != ifindex))
+        if (rtm->version != DARWIN_RTM_VERSION ||
+                (rtm->flags & DARWIN_RTF_GATEWAY) == 0 ||
+                (rtm->flags & DARWIN_RTF_HOST) != 0 ||
+                (ifindex != 0 && rtm->index != ifindex))
             continue;
 
-        struct sockaddr *addrs[RTAX_MAX] = {};
+        struct sockaddr *addrs[DARWIN_RTAX_MAX] = {};
         struct sockaddr *sa = (void *) (rtm + 1);
-        uint8_t *end = (uint8_t *) rtm + rtm->rtm_msglen;
-        for (int i = 0; i < RTAX_MAX; i++) {
-            if ((rtm->rtm_addrs & (1 << i)) == 0)
+        uint8_t *end = (uint8_t *) rtm + rtm->msglen;
+        for (int i = 0; i < DARWIN_RTAX_MAX; i++) {
+            if ((rtm->addrs & (1 << i)) == 0)
                 continue;
-            if ((uint8_t *) sa + sizeof(*sa) > end)
+            if ((uint8_t *) sa + 2 > end)
                 break;
             addrs[i] = sa;
             size_t step = ROUTE_SA_ROUNDUP(sa->sa_len);
@@ -453,39 +492,29 @@ static int netlink_host_default_gateway(uint8_t fake_family, unsigned ifindex,
             }
             sa = (void *) ((uint8_t *) sa + step);
         }
-        if (sa == NULL || addrs[RTAX_DST] == NULL ||
-                addrs[RTAX_GATEWAY] == NULL)
+        if (sa == NULL || addrs[DARWIN_RTAX_DST] == NULL ||
+                addrs[DARWIN_RTAX_GATEWAY] == NULL)
             continue;
 
         bool is_default = false;
         if (family == AF_INET &&
-                addrs[RTAX_DST]->sa_family == AF_INET &&
-                addrs[RTAX_GATEWAY]->sa_family == AF_INET) {
-            const struct sockaddr_in *dst = (const void *) addrs[RTAX_DST];
-            const struct sockaddr_in *gw = (const void *) addrs[RTAX_GATEWAY];
+                addrs[DARWIN_RTAX_DST]->sa_family == AF_INET &&
+                addrs[DARWIN_RTAX_GATEWAY]->sa_family == AF_INET) {
+            const struct sockaddr_in *dst = (const void *) addrs[DARWIN_RTAX_DST];
+            const struct sockaddr_in *gw = (const void *) addrs[DARWIN_RTAX_GATEWAY];
             is_default = dst->sin_addr.s_addr == INADDR_ANY;
-            if (is_default && addrs[RTAX_NETMASK] != NULL &&
-                    addrs[RTAX_NETMASK]->sa_family == AF_INET) {
-                const struct sockaddr_in *mask = (const void *) addrs[RTAX_NETMASK];
-                is_default = mask->sin_addr.s_addr == INADDR_ANY;
-            }
             if (is_default) {
                 memcpy(gateway, &gw->sin_addr, 4);
                 result = 0;
                 break;
             }
         } else if (family == AF_INET6 &&
-                addrs[RTAX_DST]->sa_family == AF_INET6 &&
-                addrs[RTAX_GATEWAY]->sa_family == AF_INET6) {
-            const struct sockaddr_in6 *dst = (const void *) addrs[RTAX_DST];
-            const struct sockaddr_in6 *gw = (const void *) addrs[RTAX_GATEWAY];
+                addrs[DARWIN_RTAX_DST]->sa_family == AF_INET6 &&
+                addrs[DARWIN_RTAX_GATEWAY]->sa_family == AF_INET6) {
+            const struct sockaddr_in6 *dst = (const void *) addrs[DARWIN_RTAX_DST];
+            const struct sockaddr_in6 *gw = (const void *) addrs[DARWIN_RTAX_GATEWAY];
             static const struct in6_addr zero = IN6ADDR_ANY_INIT;
             is_default = memcmp(&dst->sin6_addr, &zero, sizeof(zero)) == 0;
-            if (is_default && addrs[RTAX_NETMASK] != NULL &&
-                    addrs[RTAX_NETMASK]->sa_family == AF_INET6) {
-                const struct sockaddr_in6 *mask = (const void *) addrs[RTAX_NETMASK];
-                is_default = memcmp(&mask->sin6_addr, &zero, sizeof(zero)) == 0;
-            }
             if (is_default) {
                 memcpy(gateway, &gw->sin6_addr, 16);
                 result = 0;
