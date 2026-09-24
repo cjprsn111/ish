@@ -158,11 +158,11 @@ jobs:
           grep -Fq 'Nmap done: 1 IP address (1 host up)' nmap.txt
 
           echo '=== Nmap interface binding compatibility ==='
-          if grep -Fq 'socket_bindtodevice: Invalid argument' nmap.strace; then
-            echo 'PENDING: Nmap TCP connect scan still emits SO_BINDTODEVICE compatibility warnings'
-          else
-            echo 'PASS: Nmap TCP connect scan emits no SO_BINDTODEVICE compatibility warnings'
+          if grep -Fq 'socket_bindtodevice:' nmap.strace; then
+            echo 'FAIL: Nmap TCP connect scan emitted an SO_BINDTODEVICE compatibility error'
+            exit 1
           fi
+          echo 'PASS: Nmap TCP connect scan emits no SO_BINDTODEVICE compatibility warnings'
 
       - name: Stress repeated Nmap TCP connect scans
         timeout-minutes: 3
