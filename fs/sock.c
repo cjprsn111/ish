@@ -517,10 +517,12 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
             if (err >= 0) err = netlink_add_done(&b, request->seq);
             break;
         case RTM_GETROUTE_: {
-            const struct rtmsg_ *rt = request->len >= sizeof(*request) + sizeof(struct rtmsg_)
-                ? (const void *) ((const uint8_t *) data + sizeof(*request)) : NULL;
             if ((request->flags & NLM_F_DUMP_) != 0) {
-                err = netlink_build_route_dump(&b, request->seq, rt ? rt->family : 0);
+                // rtnetlink dump requests use struct rtgenmsg, whose only
+                // payload field is the one-byte address family.
+                uint8_t requested_family = request->len > sizeof(*request)
+                    ? *((const uint8_t *) data + sizeof(*request)) : 0;
+                err = netlink_build_route_dump(&b, request->seq, requested_family);
                 if (err >= 0) err = netlink_add_done(&b, request->seq);
             } else {
                 err = netlink_build_route_query(&b, request, data, len);
