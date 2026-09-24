@@ -94,11 +94,8 @@ jobs:
           for spec in 'ip-route-get.txt|1.1.1.1' 'ip-route-get-loopback.txt|127.0.0.1' 'ip-route-get-v6-loopback.txt|::1'; do
             file=${spec%%|*}
             dst=${spec#*|}
-            if awk -v dst="$dst" '$1 == dst { found=1 } END { exit !found }' "$file"; then
-              echo "PASS: $file returns destination $dst"
-            else
-              echo "PENDING: $file does not yet return destination $dst"
-            fi
+            awk -v dst="$dst" '$1 == dst { found=1 } END { exit !found }' "$file"
+            echo "PASS: $file returns destination $dst"
           done
 
           echo '=== route family filtering compatibility ==='
