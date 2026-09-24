@@ -24,6 +24,10 @@ jobs:
         with:
           submodules: true
 
+      - name: Install build dependencies
+        run: |
+          brew install llvm lld ninja libarchive meson
+
       - name: Build unsigned arm64 iPhone app
         run: |
           set -euo pipefail
@@ -41,8 +45,10 @@ jobs:
       - name: Package unsigned IPA candidate
         run: |
           set -euo pipefail
-          APP='build-ios/Build/Products/Debug-iphoneos/iSH.app'
+          APP="$(find build-ios/Build/Products -type d -name 'iSH.app' -print -quit)"
+          test -n "$APP"
           test -d "$APP"
+          echo "Packaging $APP"
           rm -rf Payload
           mkdir -p Payload
           ditto "$APP" Payload/iSH.app
