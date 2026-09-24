@@ -279,7 +279,8 @@ static int netlink_build_links(struct netlink_builder *b, uint32_t seq) {
     return err;
 }
 
-static int netlink_build_addrs(struct netlink_builder *b, uint32_t seq) {
+static int netlink_build_addrs(struct netlink_builder *b, uint32_t seq,
+        uint8_t requested_family) {
     struct ifaddrs *ifap;
     if (getifaddrs(&ifap) < 0)
         return errno_map();
@@ -299,6 +300,8 @@ static int netlink_build_addrs(struct netlink_builder *b, uint32_t seq) {
         const void *addr;
         const void *mask = NULL;
         uint8_t fake_family = family == AF_INET ? AF_INET_ : AF_INET6_;
+        if (requested_family != 0 && requested_family != fake_family)
+            continue;
         uint8_t scope = RT_SCOPE_UNIVERSE_;
         if (family == AF_INET) {
             struct sockaddr_in *sin = (void *) ifa->ifa_addr;
@@ -732,10 +735,15 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
             err = netlink_build_links(&b, request->seq);
             if (err >= 0) err = netlink_add_done(&b, request->seq);
             break;
-        case RTM_GETADDR_:
-            err = netlink_build_addrs(&b, request->seq);
+        case RTM_GETADDR_: {
+            // RTM_GETADDR dump requests carry struct ifaddrmsg; its first byte
+            // is the requested address family. AF_UNSPEC (0) means all.
+            uint8_t requested_family = request->len > sizeof(*request)
+                ? *((const uint8_t *) data + sizeof(*request)) : 0;
+            err = netlink_build_addrs(&b, request->seq, requested_family);
             if (err >= 0) err = netlink_add_done(&b, request->seq);
             break;
+        }
         case RTM_GETROUTE_: {
             if ((request->flags & NLM_F_DUMP_) != 0) {
                 // rtnetlink dump requests use struct rtgenmsg, whose only
