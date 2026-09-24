@@ -403,12 +403,12 @@ static int netlink_probe_route(uint8_t fake_family, const void *dst,
 #ifdef __APPLE__
 // iPhoneOS does not expose <net/route.h> to applications, but the routing
 // sysctl uses this stable Darwin routing-message ABI.
-#define DARWIN_DARWIN_RTM_VERSION 5
-#define DARWIN_DARWIN_RTF_GATEWAY 0x2
+#define DARWIN_RTM_VERSION 5
+#define DARWIN_RTF_GATEWAY 0x2
 #define DARWIN_RTF_HOST 0x4
-#define DARWIN_DARWIN_RTAX_DST 0
-#define DARWIN_DARWIN_RTAX_GATEWAY 1
-#define DARWIN_DARWIN_RTAX_MAX 8
+#define DARWIN_RTAX_DST 0
+#define DARWIN_RTAX_GATEWAY 1
+#define DARWIN_RTAX_MAX 8
 
 struct darwin_rt_metrics {
     uint32_t locks;
