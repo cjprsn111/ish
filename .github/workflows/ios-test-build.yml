@@ -42,6 +42,35 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+      - name: Validate unsigned arm64 bundle
+        run: |
+          set -euo pipefail
+          APP="$(find build-ios/Build/Products -type d -name 'iSH.app' -print -quit)"
+          test -n "$APP"
+          test -d "$APP"
+
+          MAIN="$APP/iSH"
+          EXT="$APP/PlugIns/iSHFileProvider.appex/iSHFileProvider"
+          test -f "$MAIN"
+          test -f "$EXT"
+
+          MAIN_ARCHS="$(xcrun lipo -archs "$MAIN")"
+          EXT_ARCHS="$(xcrun lipo -archs "$EXT")"
+          echo "iSH architectures: $MAIN_ARCHS"
+          echo "File Provider architectures: $EXT_ARCHS"
+          test "$MAIN_ARCHS" = "arm64"
+          test "$EXT_ARCHS" = "arm64"
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "Bundle identifier: $BUNDLE_ID"
+          test -n "$BUNDLE_ID"
+
+          if codesign -dv "$APP" >/dev/null 2>&1; then
+            echo 'FAIL: candidate unexpectedly contains a code signature'
+            exit 1
+          fi
+          echo 'PASS: candidate is unsigned and ready for external signing/sideloading'
+
       - name: Package unsigned IPA candidate
         run: |
           set -euo pipefail
@@ -57,7 +86,10 @@ jobs:
           {
             echo "branch=CJ-Netlink"
             echo "commit=${GITHUB_SHA}"
-            echo "build_type=unsigned Debug iphoneos arm64"
+            echo "build_type=unsigned iphoneos arm64"
+            echo "main_architectures=$(xcrun lipo -archs "$APP/iSH")"
+            echo "file_provider_architectures=$(xcrun lipo -archs "$APP/PlugIns/iSHFileProvider.appex/iSHFileProvider")"
+            echo "bundle_identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
             echo "signing_required_before_install=yes"
             xcodebuild -version | tr '\n' ' '
             echo
