@@ -430,7 +430,9 @@ static int netlink_build_route_query(struct netlink_builder *b,
     route->type = probe < 0 ? RTN_UNREACHABLE_ : RTN_UNICAST_;
 
     if (probe >= 0) {
-        int err = netlink_add_attr(b, start, RTA_OIF_, &index, sizeof(index));
+        int err = netlink_add_attr(b, start, RTA_DST_, dst, addr_len);
+        if (err < 0) return err;
+        err = netlink_add_attr(b, start, RTA_OIF_, &index, sizeof(index));
         if (err < 0) return err;
         err = netlink_add_attr(b, start, RTA_PREFSRC_, src, addr_len);
         if (err < 0) return err;
