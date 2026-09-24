@@ -193,6 +193,19 @@ jobs:
           fi
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
+      - name: Stress repeated iproute2 NETLINK_ROUTE requests
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 10); do
+            timeout 10s ./build/ish -f netlink-rootfs /sbin/ip addr >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /sbin/ip link >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /sbin/ip -4 route >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /sbin/ip -6 route >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /sbin/ip route get 1.1.1.1 >/dev/null
+            timeout 10s ./build/ish -f netlink-rootfs /sbin/ip -6 route get ::1 >/dev/null
+          done
+
       - name: Exercise Nmap TCP connect scan
         timeout-minutes: 2
         run: |
