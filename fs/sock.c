@@ -10,6 +10,8 @@
 #include <sys/un.h>
 #ifdef __APPLE__
 #include <net/if_dl.h>
+#include <net/route.h>
+#include <sys/sysctl.h>
 #else
 #include <netpacket/packet.h>
 #endif
@@ -399,6 +401,112 @@ static int netlink_probe_route(uint8_t fake_family, const void *dst,
     return *ifindex == 0 ? _ENODEV : 0;
 }
 
+#ifdef __APPLE__
+#define ROUTE_SA_ROUNDUP(len) ((len) > 0 ? (1 + (((len) - 1) | (sizeof(long) - 1))) : sizeof(long))
+
+static int netlink_host_default_gateway(uint8_t fake_family, unsigned ifindex,
+        uint8_t *gateway) {
+    int family = fake_family == AF_INET_ ? AF_INET :
+                 fake_family == AF_INET6_ ? AF_INET6 : -1;
+    if (family < 0)
+        return _EAFNOSUPPORT;
+
+    int mib[6] = {CTL_NET, PF_ROUTE, 0, family, NET_RT_DUMP, 0};
+    size_t len = 0;
+    if (sysctl(mib, 6, NULL, &len, NULL, 0) < 0)
+        return errno_map();
+
+    uint8_t *buf = malloc(len);
+    if (buf == NULL)
+        return _ENOMEM;
+    if (sysctl(mib, 6, buf, &len, NULL, 0) < 0) {
+        int err = errno_map();
+        free(buf);
+        return err;
+    }
+
+    int result = _ENOENT;
+    for (uint8_t *p = buf; p + sizeof(struct rt_msghdr) <= buf + len; ) {
+        struct rt_msghdr *rtm = (void *) p;
+        if (rtm->rtm_msglen < sizeof(*rtm) || p + rtm->rtm_msglen > buf + len)
+            break;
+        p += rtm->rtm_msglen;
+
+        if (rtm->rtm_version != RTM_VERSION ||
+                (rtm->rtm_flags & RTF_GATEWAY) == 0 ||
+                (ifindex != 0 && rtm->rtm_index != ifindex))
+            continue;
+
+        struct sockaddr *addrs[RTAX_MAX] = {};
+        struct sockaddr *sa = (void *) (rtm + 1);
+        uint8_t *end = (uint8_t *) rtm + rtm->rtm_msglen;
+        for (int i = 0; i < RTAX_MAX; i++) {
+            if ((rtm->rtm_addrs & (1 << i)) == 0)
+                continue;
+            if ((uint8_t *) sa + sizeof(*sa) > end)
+                break;
+            addrs[i] = sa;
+            size_t step = ROUTE_SA_ROUNDUP(sa->sa_len);
+            if (step == 0 || (uint8_t *) sa + step > end) {
+                sa = NULL;
+                break;
+            }
+            sa = (void *) ((uint8_t *) sa + step);
+        }
+        if (sa == NULL || addrs[RTAX_DST] == NULL ||
+                addrs[RTAX_GATEWAY] == NULL)
+            continue;
+
+        bool is_default = false;
+        if (family == AF_INET &&
+                addrs[RTAX_DST]->sa_family == AF_INET &&
+                addrs[RTAX_GATEWAY]->sa_family == AF_INET) {
+            const struct sockaddr_in *dst = (const void *) addrs[RTAX_DST];
+            const struct sockaddr_in *gw = (const void *) addrs[RTAX_GATEWAY];
+            is_default = dst->sin_addr.s_addr == INADDR_ANY;
+            if (is_default && addrs[RTAX_NETMASK] != NULL &&
+                    addrs[RTAX_NETMASK]->sa_family == AF_INET) {
+                const struct sockaddr_in *mask = (const void *) addrs[RTAX_NETMASK];
+                is_default = mask->sin_addr.s_addr == INADDR_ANY;
+            }
+            if (is_default) {
+                memcpy(gateway, &gw->sin_addr, 4);
+                result = 0;
+                break;
+            }
+        } else if (family == AF_INET6 &&
+                addrs[RTAX_DST]->sa_family == AF_INET6 &&
+                addrs[RTAX_GATEWAY]->sa_family == AF_INET6) {
+            const struct sockaddr_in6 *dst = (const void *) addrs[RTAX_DST];
+            const struct sockaddr_in6 *gw = (const void *) addrs[RTAX_GATEWAY];
+            static const struct in6_addr zero = IN6ADDR_ANY_INIT;
+            is_default = memcmp(&dst->sin6_addr, &zero, sizeof(zero)) == 0;
+            if (is_default && addrs[RTAX_NETMASK] != NULL &&
+                    addrs[RTAX_NETMASK]->sa_family == AF_INET6) {
+                const struct sockaddr_in6 *mask = (const void *) addrs[RTAX_NETMASK];
+                is_default = memcmp(&mask->sin6_addr, &zero, sizeof(zero)) == 0;
+            }
+            if (is_default) {
+                memcpy(gateway, &gw->sin6_addr, 16);
+                result = 0;
+                break;
+            }
+        }
+    }
+
+    free(buf);
+    return result;
+}
+#else
+static int netlink_host_default_gateway(uint8_t fake_family, unsigned ifindex,
+        uint8_t *gateway) {
+    (void) fake_family;
+    (void) ifindex;
+    (void) gateway;
+    return _EOPNOTSUPP;
+}
+#endif
+
 static int netlink_add_default_route(struct netlink_builder *b, uint32_t seq,
         uint8_t family) {
     uint8_t probe_dst[16] = {};
@@ -437,7 +545,17 @@ static int netlink_add_default_route(struct netlink_builder *b, uint32_t seq,
     int err = netlink_add_attr(b, start, RTA_OIF_, &index, sizeof(index));
     if (err < 0)
         return err;
-    return netlink_add_attr(b, start, RTA_PREFSRC_, src, addr_len);
+    err = netlink_add_attr(b, start, RTA_PREFSRC_, src, addr_len);
+    if (err < 0)
+        return err;
+
+    uint8_t gateway[16] = {};
+    if (netlink_host_default_gateway(family, index, gateway) == 0) {
+        err = netlink_add_attr(b, start, RTA_GATEWAY_, gateway, addr_len);
+        if (err < 0)
+            return err;
+    }
+    return 0;
 }
 
 static int netlink_build_route_query(struct netlink_builder *b,
