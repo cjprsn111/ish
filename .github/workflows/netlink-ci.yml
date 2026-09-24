@@ -201,18 +201,18 @@ jobs:
 
           echo '=== iproute2 Netlink error semantics ==='
           set +e
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip link set dev lo mtu 65535 \
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip route add 198.51.100.0/24 dev lo \
             >iproute2-mutation.txt 2>iproute2-mutation.strace
           mutation_rc=$?
           set -e
           cat iproute2-mutation.txt || true
           tail -n 120 iproute2-mutation.strace || true
           if [ "$mutation_rc" -eq 0 ]; then
-            echo 'FAIL: unsupported RTM_NEWLINK mutation unexpectedly succeeded'
+            echo 'FAIL: unsupported RTM_NEWROUTE mutation unexpectedly succeeded'
             exit 1
           fi
           if [ "$mutation_rc" -eq 124 ]; then
-            echo 'FAIL: unsupported RTM_NEWLINK mutation hung waiting for Netlink error'
+            echo 'FAIL: unsupported RTM_NEWROUTE mutation hung waiting for Netlink error'
             exit 1
           fi
           grep -Eqi 'operation not supported|not supported' iproute2-mutation.strace
