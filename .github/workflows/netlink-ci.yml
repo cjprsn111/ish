@@ -193,6 +193,11 @@ jobs:
             echo 'FAIL: iproute2 -4 route includes IPv6 routes'
             exit 1
           fi
+          if grep -Eq ' dev if[0-9]+([[:space:]]|$)' iproute2-route*.txt iproute2-get-*.txt; then
+            echo 'FAIL: iproute2 fell back to numeric interface names'
+            exit 1
+          fi
+          echo 'PASS: iproute2 resolves route interface indexes to host names'
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
