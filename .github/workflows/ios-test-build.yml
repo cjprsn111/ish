@@ -1,0 +1,72 @@
+name: CJ-Netlink iPhone Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [CJ-Netlink]
+    paths:
+      - 'fs/sock.c'
+      - 'fs/sock.h'
+      - 'app/**'
+      - 'iSH.xcodeproj/**'
+      - '.github/workflows/ios-test-build.yml'
+
+concurrency:
+  group: cj-netlink-ios-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-unsigned-iphone-candidate:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Build unsigned arm64 iPhone app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project iSH.xcodeproj \
+            -scheme iSH \
+            -configuration Debug \
+            -arch arm64 \
+            -sdk iphoneos \
+            -derivedDataPath build-ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned IPA candidate
+        run: |
+          set -euo pipefail
+          APP='build-ios/Build/Products/Debug-iphoneos/iSH.app'
+          test -d "$APP"
+          rm -rf Payload
+          mkdir -p Payload
+          ditto "$APP" Payload/iSH.app
+          /usr/bin/zip -qry CJ-Netlink-iSH-unsigned.ipa Payload
+
+          {
+            echo "branch=CJ-Netlink"
+            echo "commit=${GITHUB_SHA}"
+            echo "build_type=unsigned Debug iphoneos arm64"
+            echo "signing_required_before_install=yes"
+            xcodebuild -version | tr '\n' ' '
+            echo
+          } > CJ-Netlink-build-info.txt
+
+          shasum -a 256 CJ-Netlink-iSH-unsigned.ipa | tee CJ-Netlink-iSH-unsigned.ipa.sha256
+          unzip -t CJ-Netlink-iSH-unsigned.ipa
+
+      - name: Upload iPhone candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: CJ-Netlink-iPhone-Candidate-${{ github.sha }}
+          path: |
+            CJ-Netlink-iSH-unsigned.ipa
+            CJ-Netlink-iSH-unsigned.ipa.sha256
+            CJ-Netlink-build-info.txt
+          if-no-files-found: error
+          retention-days: 14
