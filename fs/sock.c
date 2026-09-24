@@ -1978,17 +1978,35 @@ static int sock_setflags(struct fd *fd, dword_t flags) {
     return realfs_setflags(fd, flags);
 }
 
+#define SIOCGIFNAME_ 0x8910
 #define SIOCGIFTXQLEN_ 0x8942
 #define IFREQ32_SIZE_ 32
 #define IFNAMSIZ_ 16
 
 static ssize_t sock_ioctl_size(int cmd) {
-    if (cmd == SIOCGIFTXQLEN_)
+    if (cmd == SIOCGIFNAME_ || cmd == SIOCGIFTXQLEN_)
         return IFREQ32_SIZE_;
     return realfs_ioctl_size(cmd);
 }
 
 static int sock_ioctl(struct fd *fd, int cmd, void *arg) {
+    if (cmd == SIOCGIFNAME_) {
+        // Linux userspace (including musl if_indextoname()) resolves an
+        // interface index through SIOCGIFNAME. Translate the host index back
+        // to the host interface name so route tools can print eth0/en0/etc.
+        int32_t index;
+        memcpy(&index, (uint8_t *) arg + IFNAMSIZ_, sizeof(index));
+        if (index <= 0)
+            return _ENODEV;
+
+        char ifname[IFNAMSIZ_];
+        if (if_indextoname((unsigned) index, ifname) == NULL)
+            return errno_map();
+
+        memset(arg, 0, IFNAMSIZ_);
+        strncpy(arg, ifname, IFNAMSIZ_ - 1);
+        return 0;
+    }
     if (cmd == SIOCGIFTXQLEN_) {
         // Linux i386 struct ifreq is 32 bytes: a 16-byte interface name
         // followed by a 16-byte union. Darwin/iOS has no SIOCGIFTXQLEN
