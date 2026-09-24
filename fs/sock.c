@@ -141,6 +141,24 @@ static int netlink_add_done(struct netlink_builder *b, uint32_t seq) {
     return 0;
 }
 
+static int netlink_add_error(struct netlink_builder *b,
+        const struct nlmsghdr_ *request, int error) {
+    // Linux NLMSG_ERROR carries a signed errno followed by the header of the
+    // request that caused it. A zero errno is an ACK; negative values are
+    // normal Netlink errors such as -EOPNOTSUPP.
+    size_t payload_len = sizeof(int32_t) + sizeof(struct nlmsghdr_);
+    size_t start = netlink_start_msg(b, NLMSG_ERROR_, 0, request->seq,
+            payload_len);
+    if (start == SIZE_MAX)
+        return _ENOMEM;
+
+    uint8_t *payload = netlink_payload(b, start);
+    int32_t nlerr = error;
+    memcpy(payload, &nlerr, sizeof(nlerr));
+    memcpy(payload + sizeof(nlerr), request, sizeof(*request));
+    return 0;
+}
+
 static uint32_t netlink_linux_if_flags(unsigned host_flags) {
     uint32_t flags = 0;
 #ifdef IFF_UP
@@ -737,8 +755,22 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
     }
 
     if (err < 0) {
+        // Once a valid Netlink request has reached the route family, Linux
+        // reports protocol errors asynchronously with NLMSG_ERROR. Keep the
+        // send/write successful so userspace receives the error on recvmsg().
         free(b.data);
-        return err;
+        b.data = NULL;
+        b.len = b.cap = 0;
+        int build_err = netlink_add_error(&b, request, err);
+        if (build_err < 0)
+            return build_err;
+    } else if ((request->flags & NLM_F_ACK_) != 0 &&
+            (request->flags & NLM_F_DUMP_) == 0) {
+        int build_err = netlink_add_error(&b, request, 0);
+        if (build_err < 0) {
+            free(b.data);
+            return build_err;
+        }
     }
     fd->socket.netlink_seq = request->seq;
     return netlink_commit_response(fd, &b);
