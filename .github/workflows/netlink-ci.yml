@@ -100,15 +100,24 @@ jobs:
 
           echo '=== route family filtering compatibility ==='
           if grep -Eq '(^|[[:space:]])[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' ip-route-v6.txt; then
-            echo 'PENDING: ip -6 route still includes IPv4 routes'
+            echo 'FAIL: ip -6 route includes IPv4 routes'
+            exit 1
           else
             echo 'PASS: ip -6 route contains no IPv4 routes'
           fi
           if grep -Eq '(^|[[:space:]])[0-9a-fA-F]*:[0-9a-fA-F:]+' ip-route-v4.txt; then
-            echo 'PENDING: ip -4 route still includes IPv6 routes'
+            echo 'FAIL: ip -4 route includes IPv6 routes'
+            exit 1
           else
             echo 'PASS: ip -4 route contains no IPv6 routes'
           fi
+
+          echo '=== interface ioctl compatibility ==='
+          if grep -Fq 'ioctl 0x8942 failed' ip-*.strace; then
+            echo 'FAIL: interface transmit-queue ioctl is not emulated'
+            exit 1
+          fi
+          echo 'PASS: interface transmit-queue ioctl emits no compatibility warnings'
 
       - name: Stress repeated NETLINK_ROUTE requests
         timeout-minutes: 2
