@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <netinet/in.h>
 #include <string.h>
 #ifndef __APPLE__
 #include <linux/if_link.h>
@@ -177,8 +178,129 @@ static int proc_show_net_dev(struct proc_entry *UNUSED(entry),
     return 0;
 }
 
+static unsigned proc_net_prefix_bits(const uint8_t *mask, size_t len) {
+    unsigned bits = 0;
+    for (size_t i = 0; i < len; i++) {
+        uint8_t byte = mask[i];
+        for (int bit = 7; bit >= 0; bit--) {
+            if ((byte & (1u << bit)) == 0)
+                return bits;
+            bits++;
+        }
+    }
+    return bits;
+}
+
+static int proc_show_net_route(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return errno_map();
+
+    proc_printf(buf,
+            "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n");
+
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || ifa->ifa_addr == NULL ||
+                ifa->ifa_netmask == NULL ||
+                ifa->ifa_addr->sa_family != AF_INET ||
+                ifa->ifa_netmask->sa_family != AF_INET)
+            continue;
+
+        const struct sockaddr_in *addr = (const void *) ifa->ifa_addr;
+        const struct sockaddr_in *mask = (const void *) ifa->ifa_netmask;
+        uint32_t destination = addr->sin_addr.s_addr & mask->sin_addr.s_addr;
+
+        // Publish connected routes only. A gateway of zero means the route is
+        // directly connected; never invent a default gateway in procfs.
+        proc_printf(buf,
+                "%s\t%08X\t%08X\t%04X\t0\t0\t0\t%08X\t0\t0\t0\n",
+                ifa->ifa_name, destination, 0u, 0x0001u,
+                mask->sin_addr.s_addr);
+    }
+
+    freeifaddrs(ifap);
+    return 0;
+}
+
+static int proc_show_net_if_inet6(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return errno_map();
+
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || ifa->ifa_addr == NULL ||
+                ifa->ifa_netmask == NULL ||
+                ifa->ifa_addr->sa_family != AF_INET6 ||
+                ifa->ifa_netmask->sa_family != AF_INET6)
+            continue;
+
+        const struct sockaddr_in6 *addr = (const void *) ifa->ifa_addr;
+        const struct sockaddr_in6 *mask = (const void *) ifa->ifa_netmask;
+        const uint8_t *bytes = (const uint8_t *) &addr->sin6_addr;
+        unsigned prefix = proc_net_prefix_bits(
+                (const uint8_t *) &mask->sin6_addr, 16);
+        unsigned scope = IN6_IS_ADDR_LOOPBACK(&addr->sin6_addr) ? 0x10 :
+                         IN6_IS_ADDR_LINKLOCAL(&addr->sin6_addr) ? 0x20 : 0;
+        unsigned index = if_nametoindex(ifa->ifa_name);
+        if (index == 0)
+            continue;
+
+        for (size_t i = 0; i < 16; i++)
+            proc_printf(buf, "%02x", bytes[i]);
+        proc_printf(buf, " %02x %02x %02x 00 %s\n",
+                index, prefix, scope, ifa->ifa_name);
+    }
+
+    freeifaddrs(ifap);
+    return 0;
+}
+
+static int proc_show_net_ipv6_route(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return errno_map();
+
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || ifa->ifa_addr == NULL ||
+                ifa->ifa_netmask == NULL ||
+                ifa->ifa_addr->sa_family != AF_INET6 ||
+                ifa->ifa_netmask->sa_family != AF_INET6)
+            continue;
+
+        const struct sockaddr_in6 *addr = (const void *) ifa->ifa_addr;
+        const struct sockaddr_in6 *mask = (const void *) ifa->ifa_netmask;
+        const uint8_t *addr_bytes = (const uint8_t *) &addr->sin6_addr;
+        const uint8_t *mask_bytes = (const uint8_t *) &mask->sin6_addr;
+        uint8_t network[16];
+        for (size_t i = 0; i < sizeof(network); i++)
+            network[i] = addr_bytes[i] & mask_bytes[i];
+        unsigned prefix = proc_net_prefix_bits(mask_bytes, sizeof(network));
+
+        for (size_t i = 0; i < sizeof(network); i++)
+            proc_printf(buf, "%02x", network[i]);
+        proc_printf(buf, " %02x ", prefix);
+        for (size_t i = 0; i < 16; i++)
+            proc_printf(buf, "00");
+        proc_printf(buf, " 00 ");
+        for (size_t i = 0; i < 16; i++)
+            proc_printf(buf, "00");
+        // metric, reference count, use count, flags, interface
+        proc_printf(buf, " 00000000 00000000 00000000 00000001 %s\n",
+                ifa->ifa_name);
+    }
+
+    freeifaddrs(ifap);
+    return 0;
+}
+
 static struct proc_children proc_net_children = PROC_CHILDREN({
     {"dev", .show = proc_show_net_dev},
+    {"if_inet6", .show = proc_show_net_if_inet6},
+    {"ipv6_route", .show = proc_show_net_ipv6_route},
+    {"route", .show = proc_show_net_route},
 });
 
 static int proc_readlink_self(struct proc_entry *UNUSED(entry), char *buf) {
