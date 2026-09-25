@@ -1,6 +1,11 @@
 #include <sys/stat.h>
 #include <inttypes.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <string.h>
+#ifndef __APPLE__
+#include <linux/if_link.h>
+#endif
 #include "kernel/calls.h"
 #include "fs/proc.h"
 #include "platform/platform.h"
@@ -65,6 +70,117 @@ static int proc_show_uptime(struct proc_entry *UNUSED(entry), struct proc_data *
     return 0;
 }
 
+struct proc_net_dev_stats {
+    uint64_t rx_bytes;
+    uint64_t rx_packets;
+    uint64_t rx_errors;
+    uint64_t rx_dropped;
+    uint64_t rx_fifo;
+    uint64_t rx_frame;
+    uint64_t rx_compressed;
+    uint64_t multicast;
+    uint64_t tx_bytes;
+    uint64_t tx_packets;
+    uint64_t tx_errors;
+    uint64_t tx_dropped;
+    uint64_t tx_fifo;
+    uint64_t collisions;
+    uint64_t tx_carrier;
+    uint64_t tx_compressed;
+};
+
+static void proc_net_dev_stats(struct ifaddrs *ifap, const char *name,
+        struct proc_net_dev_stats *stats) {
+    memset(stats, 0, sizeof(*stats));
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || strcmp(ifa->ifa_name, name) != 0 ||
+                ifa->ifa_data == NULL)
+            continue;
+#ifdef __APPLE__
+        const struct if_data *data = ifa->ifa_data;
+        stats->rx_bytes = data->ifi_ibytes;
+        stats->rx_packets = data->ifi_ipackets;
+        stats->rx_errors = data->ifi_ierrors;
+        stats->rx_dropped = data->ifi_iqdrops;
+        stats->multicast = data->ifi_imcasts;
+        stats->tx_bytes = data->ifi_obytes;
+        stats->tx_packets = data->ifi_opackets;
+        stats->tx_errors = data->ifi_oerrors;
+        stats->collisions = data->ifi_collisions;
+        return;
+#else
+        if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_PACKET)
+            continue;
+        const struct rtnl_link_stats *data = ifa->ifa_data;
+        stats->rx_bytes = data->rx_bytes;
+        stats->rx_packets = data->rx_packets;
+        stats->rx_errors = data->rx_errors;
+        stats->rx_dropped = data->rx_dropped;
+        stats->rx_fifo = data->rx_fifo_errors;
+        stats->rx_frame = data->rx_frame_errors;
+        stats->rx_compressed = data->rx_compressed;
+        stats->multicast = data->multicast;
+        stats->tx_bytes = data->tx_bytes;
+        stats->tx_packets = data->tx_packets;
+        stats->tx_errors = data->tx_errors;
+        stats->tx_dropped = data->tx_dropped;
+        stats->tx_fifo = data->tx_fifo_errors;
+        stats->collisions = data->collisions;
+        stats->tx_carrier = data->tx_carrier_errors;
+        stats->tx_compressed = data->tx_compressed;
+        return;
+#endif
+    }
+}
+
+static bool proc_net_dev_seen_before(struct ifaddrs *first,
+        struct ifaddrs *current) {
+    for (struct ifaddrs *ifa = first; ifa != current; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name != NULL &&
+                strcmp(ifa->ifa_name, current->ifa_name) == 0)
+            return true;
+    }
+    return false;
+}
+
+static int proc_show_net_dev(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return errno_map();
+
+    proc_printf(buf,
+            "Inter-|   Receive                                                |  Transmit\n"
+            " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n");
+
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || proc_net_dev_seen_before(ifap, ifa))
+            continue;
+
+        struct proc_net_dev_stats stats;
+        proc_net_dev_stats(ifap, ifa->ifa_name, &stats);
+        proc_printf(buf,
+                "%6s: %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64
+                " %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64
+                " %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64
+                " %"PRIu64"\n",
+                ifa->ifa_name,
+                stats.rx_bytes, stats.rx_packets, stats.rx_errors,
+                stats.rx_dropped, stats.rx_fifo, stats.rx_frame,
+                stats.rx_compressed, stats.multicast,
+                stats.tx_bytes, stats.tx_packets, stats.tx_errors,
+                stats.tx_dropped, stats.tx_fifo, stats.collisions,
+                stats.tx_carrier, stats.tx_compressed);
+    }
+
+    freeifaddrs(ifap);
+    return 0;
+}
+
+static struct proc_children proc_net_children = PROC_CHILDREN({
+    {"dev", .show = proc_show_net_dev},
+});
+
 static int proc_readlink_self(struct proc_entry *UNUSED(entry), char *buf) {
     sprintf(buf, "%d/", current->pid);
     return 0;
@@ -119,6 +235,7 @@ struct proc_dir_entry proc_root_entries[] = {
     {"ish", S_IFDIR, .children = &proc_ish_children},
     {"meminfo", .show = proc_show_meminfo},
     {"mounts", .show = proc_show_mounts},
+    {"net", S_IFDIR, .children = &proc_net_children},
     {"self", S_IFLNK, .readlink = proc_readlink_self},
     {"stat", .show = proc_show_stat},
     {"uptime", .show = proc_show_uptime},
