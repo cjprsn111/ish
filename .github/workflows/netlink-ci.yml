@@ -326,6 +326,28 @@ jobs:
 
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
+      - name: Exercise procfs socket tables and ss fallback
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+
+          timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
+            /bin/busybox nc -l -p 23456 >/dev/null 2>&1 &
+            listener=$!
+            sleep 1
+            cat /proc/net/tcp
+            /sbin/ss -ltn
+            kill "$listener"
+          ' >ss-listen.txt 2>ss-listen.strace
+
+          cat ss-listen.txt
+          grep -Fq ':23456' ss-listen.txt
+          if grep -Eqi 'cannot open /proc/net/tcp|No such file or directory' ss-listen.strace; then
+            echo 'FAIL: ss fallback could not read /proc/net/tcp'
+            exit 1
+          fi
+          echo 'PASS: /proc/net/tcp exposes guest listeners and ss can fall back to it'
+
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
         timeout-minutes: 2
         run: |
