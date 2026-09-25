@@ -2524,11 +2524,14 @@ static int sock_ioctl(struct fd *fd, int cmd, void *arg) {
             break;
         }
         case SIOCGIFMTU_: {
-            uint32_t mtu;
-            if (!netlink_link_mtu(ifap, ifname, &mtu)) {
-                result = _EOPNOTSUPP;
-                break;
-            }
+            uint32_t mtu = 0;
+            // Some iOS pseudo-interfaces (for example XHC0) are real
+            // interfaces but do not expose a nonzero ifi_mtu through
+            // getifaddrs(). Linux interface consumers such as Nmap's libdnet
+            // treat a failed SIOCGIFMTU as a fatal interface-enumeration
+            // error. Preserve the host's "unknown/zero" value instead of
+            // failing the ioctl for an interface we already know exists.
+            netlink_link_mtu(ifap, ifname, &mtu);
             int32_t linux_mtu = (int32_t) mtu;
             memcpy((uint8_t *) arg + IFNAMSIZ_, &linux_mtu,
                     sizeof(linux_mtu));
