@@ -366,17 +366,18 @@ jobs:
             listener=$!
             sleep 1
             cat /proc/net/tcp
-            ss -ltn
+            ss -ltnp
             kill "$listener"
           ' >ss-listen.txt 2>ss-listen.strace
 
           cat ss-listen.txt
           grep -Fq ':23456' ss-listen.txt
+          grep -Fq 'users:(' ss-listen.txt
           if grep -Eqi 'cannot open /proc/net/tcp|No such file or directory' ss-listen.strace; then
             echo 'FAIL: ss fallback could not read /proc/net/tcp'
             exit 1
           fi
-          echo 'PASS: /proc/net/tcp exposes guest listeners and ss can fall back to it'
+          echo 'PASS: /proc/net/tcp exposes guest listeners and ss maps sockets back to guest processes'
 
           timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
             /bin/busybox nc -u -l -p 23457 >/dev/null 2>&1 &
