@@ -336,7 +336,7 @@ jobs:
             listener=$!
             sleep 1
             cat /proc/net/tcp
-            /sbin/ss -ltn
+            ss -ltn
             kill "$listener"
           ' >ss-listen.txt 2>ss-listen.strace
 
