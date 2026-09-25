@@ -5,9 +5,20 @@ on:
   push:
     branches: [CJ-Netlink]
     paths:
-      - 'fs/sock.c'
-      - 'fs/sock.h'
       - 'app/**'
+      - 'asbestos/**'
+      - 'deps/**'
+      - 'emu/**'
+      - 'fs/**'
+      - 'kernel/**'
+      - 'linux/**'
+      - 'platform/**'
+      - 'util/**'
+      - 'main.c'
+      - 'misc.h'
+      - 'debug.h'
+      - 'meson.build'
+      - 'meson_options.txt'
       - 'iSH.xcodeproj/**'
       - '.github/workflows/ios-test-build.yml'
       - 'IPHONE_TEST.md'
