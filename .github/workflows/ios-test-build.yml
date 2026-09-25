@@ -55,6 +55,11 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+          APP="$(find build-ios/Build/Products -type d -name 'iSH.app' -print -quit)"
+          test -n "$APP"
+          cp CJ_KALI_SETUP.sh "$APP/CJ_KALI_SETUP.sh"
+          chmod 0644 "$APP/CJ_KALI_SETUP.sh"
+
       - name: Validate unsigned arm64 bundle
         run: |
           set -euo pipefail
@@ -66,6 +71,7 @@ jobs:
           EXT="$APP/PlugIns/iSHFileProvider.appex/iSHFileProvider"
           test -f "$MAIN"
           test -f "$EXT"
+          test -f "$APP/CJ_KALI_SETUP.sh"
 
           MAIN_ARCHS="$(xcrun lipo -archs "$MAIN")"
           EXT_ARCHS="$(xcrun lipo -archs "$EXT")"
