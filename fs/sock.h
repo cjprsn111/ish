@@ -113,7 +113,9 @@ struct rtattr_ {
 #define IFLA_ADDRESS_ 1
 #define IFLA_BROADCAST_ 2
 #define IFLA_IFNAME_ 3
+#define IFLA_MTU_ 4
 #define IFLA_STATS_ 7
+#define IFLA_OPERSTATE_ 16
 
 struct rtnl_link_stats_ {
     uint32_t rx_packets;

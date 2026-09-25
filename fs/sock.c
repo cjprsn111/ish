@@ -5,6 +5,7 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -218,6 +219,35 @@ static size_t netlink_hwaddr(struct ifaddrs *ifap, const char *name,
     return 0;
 }
 
+static int netlink_link_mtu(struct ifaddrs *ifap, const char *name,
+        uint32_t *mtu) {
+#ifdef __APPLE__
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || strcmp(ifa->ifa_name, name) != 0 ||
+                ifa->ifa_data == NULL)
+            continue;
+        const struct if_data *data = ifa->ifa_data;
+        if (data->ifi_mtu != 0) {
+            *mtu = data->ifi_mtu;
+            return 1;
+        }
+    }
+#else
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd >= 0) {
+        struct ifreq ifr = {};
+        strncpy(ifr.ifr_name, name, sizeof(ifr.ifr_name) - 1);
+        if (ioctl(fd, SIOCGIFMTU, &ifr) == 0 && ifr.ifr_mtu > 0) {
+            *mtu = (uint32_t) ifr.ifr_mtu;
+            close(fd);
+            return 1;
+        }
+        close(fd);
+    }
+#endif
+    return 0;
+}
+
 static int netlink_link_stats(struct ifaddrs *ifap, const char *name,
         struct rtnl_link_stats_ *stats) {
     memset(stats, 0, sizeof(*stats));
@@ -320,6 +350,19 @@ static int netlink_build_links(struct netlink_builder *b, uint32_t seq) {
 
         err = netlink_add_attr(b, start, IFLA_IFNAME_,
                 ifa->ifa_name, strlen(ifa->ifa_name) + 1);
+        if (err < 0) break;
+
+        uint32_t mtu;
+        if (netlink_link_mtu(ifap, ifa->ifa_name, &mtu)) {
+            err = netlink_add_attr(b, start, IFLA_MTU_, &mtu, sizeof(mtu));
+            if (err < 0) break;
+        }
+
+        uint8_t operstate = (ifa->ifa_flags & IFF_UP)
+            ? ((ifa->ifa_flags & IFF_RUNNING) ? 6 : 0)
+            : 2;
+        err = netlink_add_attr(b, start, IFLA_OPERSTATE_,
+                &operstate, sizeof(operstate));
         if (err < 0) break;
 
         uint8_t hw[32];
