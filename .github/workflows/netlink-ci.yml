@@ -303,10 +303,18 @@ jobs:
           set -euo pipefail
 
           echo '=== Nmap interface and route discovery ==='
+          set +e
           timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap --iflist \
             >nmap-iflist.txt 2>nmap-iflist.strace
-          cat nmap-iflist.txt
-          tail -n 200 nmap-iflist.strace || true
+          iflist_rc=$?
+          set -e
+          cat nmap-iflist.txt || true
+          echo '--- last 400 Nmap --iflist stderr/strace lines ---'
+          tail -n 400 nmap-iflist.strace || true
+          if [ "$iflist_rc" -ne 0 ]; then
+            echo "FAIL: Nmap --iflist exited with status $iflist_rc"
+            exit "$iflist_rc"
+          fi
           grep -Fq 'lo' nmap-iflist.txt
           if grep -Eqi 'failed to open|cannot open|netlink.*error|socket_bindtodevice:' nmap-iflist.strace; then
             echo 'FAIL: Nmap interface discovery emitted a network compatibility error'
