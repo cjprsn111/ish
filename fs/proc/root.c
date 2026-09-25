@@ -396,7 +396,18 @@ static int proc_show_net_ipv6_route(struct proc_entry *UNUSED(entry),
     return 0;
 }
 
+static int proc_show_net_arp(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    // iOS does not expose a stable public ARP/NDP table to sandboxed apps.
+    // Linux tools commonly expect /proc/net/arp to exist, so expose a valid
+    // empty table rather than fabricating neighbor information.
+    proc_printf(buf,
+            "IP address       HW type     Flags       HW address            Mask     Device\n");
+    return 0;
+}
+
 static struct proc_children proc_net_children = PROC_CHILDREN({
+    {"arp", .show = proc_show_net_arp},
     {"dev", .show = proc_show_net_dev},
     {"if_inet6", .show = proc_show_net_if_inet6},
     {"ipv6_route", .show = proc_show_net_ipv6_route},
