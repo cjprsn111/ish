@@ -2471,6 +2471,21 @@ static int sock_ioctl(struct fd *fd, int cmd, void *arg) {
         return 0;
     }
 
+    switch (cmd) {
+        case SIOCGIFFLAGS_:
+        case SIOCGIFADDR_:
+        case SIOCGIFDSTADDR_:
+        case SIOCGIFBRDADDR_:
+        case SIOCGIFNETMASK_:
+        case SIOCGIFMTU_:
+        case SIOCGIFHWADDR_:
+        case SIOCGIFINDEX_:
+        case SIOCGIFTXQLEN_:
+            break;
+        default:
+            return realfs_ioctl(fd, cmd, arg);
+    }
+
     char ifname[IFNAMSIZ_ + 1];
     sock_ifreq_name(arg, ifname);
     unsigned ifindex = if_nametoindex(ifname);
