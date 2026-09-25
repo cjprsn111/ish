@@ -379,6 +379,25 @@ jobs:
           echo 'PASS: /proc/net/tcp exposes guest listeners and ss can fall back to it'
 
           timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
+            /bin/busybox nc -u -l -p 23457 >/dev/null 2>&1 &
+            udp_listener=$!
+            sleep 1
+            cat /proc/net/udp
+            ss -lun
+            kill "$udp_listener" 2>/dev/null || true
+            wait "$udp_listener" 2>/dev/null || true
+            exit 0
+          ' >ss-udp.txt 2>ss-udp.strace
+
+          cat ss-udp.txt
+          grep -Fq ':23457' ss-udp.txt
+          if grep -Eqi 'cannot open /proc/net/udp|No such file or directory' ss-udp.strace; then
+            echo 'FAIL: ss fallback could not read /proc/net/udp'
+            exit 1
+          fi
+          echo 'PASS: /proc/net/udp exposes guest UDP sockets and ss can fall back to it'
+
+          timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
             /bin/busybox syslogd -n -O /tmp/cj-syslog.log >/dev/null 2>&1 &
             logger_pid=$!
             sleep 1
