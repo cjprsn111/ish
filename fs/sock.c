@@ -30,6 +30,8 @@
 const struct fd_ops socket_fdops;
 
 static lock_t peer_lock = LOCK_INITIALIZER;
+static lock_t socket_inode_lock = LOCK_INITIALIZER;
+static ino_t socket_inode_next = 0x100000;
 
 static int is_netlink_route(const struct fd *fd) {
     return fd->socket.domain == AF_NETLINK_ && fd->socket.protocol == NETLINK_ROUTE_;
@@ -976,6 +978,9 @@ static fd_t sock_fd_create(int sock_fd, int domain, int type, int protocol) {
     if (fd == NULL)
         return _ENOMEM;
     fd->stat.mode = S_IFSOCK | 0666;
+    lock(&socket_inode_lock);
+    fd->stat.inode = ++socket_inode_next;
+    unlock(&socket_inode_lock);
     fd->real_fd = sock_fd;
     fd->socket.domain = domain;
     fd->socket.type = type & SOCKET_TYPE_MASK;
