@@ -2343,17 +2343,116 @@ static int sock_setflags(struct fd *fd, dword_t flags) {
 }
 
 #define SIOCGIFNAME_ 0x8910
+#define SIOCGIFCONF_ 0x8912
+#define SIOCGIFFLAGS_ 0x8913
+#define SIOCGIFADDR_ 0x8915
+#define SIOCGIFDSTADDR_ 0x8917
+#define SIOCGIFBRDADDR_ 0x8919
+#define SIOCGIFNETMASK_ 0x891b
+#define SIOCGIFMTU_ 0x8921
+#define SIOCGIFHWADDR_ 0x8927
+#define SIOCGIFINDEX_ 0x8933
 #define SIOCGIFTXQLEN_ 0x8942
+#define IFCONF32_SIZE_ 8
 #define IFREQ32_SIZE_ 32
 #define IFNAMSIZ_ 16
 
+static void sock_ifreq_name(const void *arg, char ifname[IFNAMSIZ_ + 1]) {
+    memcpy(ifname, arg, IFNAMSIZ_);
+    ifname[IFNAMSIZ_] = '\0';
+}
+
+static void sock_linux_sockaddr4(uint8_t out[16], const struct in_addr *addr) {
+    memset(out, 0, 16);
+    uint16_t family = AF_INET_;
+    memcpy(out, &family, sizeof(family));
+    // Linux sockaddr_in has sin_port at bytes 2-3 and sin_addr at bytes 4-7.
+    memcpy(out + 4, addr, sizeof(*addr));
+}
+
+static struct ifaddrs *sock_find_ifaddr(struct ifaddrs *ifap,
+        const char *ifname, int family) {
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || strcmp(ifa->ifa_name, ifname) != 0)
+            continue;
+        if (family == AF_UNSPEC ||
+                (ifa->ifa_addr != NULL && ifa->ifa_addr->sa_family == family))
+            return ifa;
+    }
+    return NULL;
+}
+
+static int sock_ioctl_ifconf(void *arg) {
+    int32_t requested_len;
+    uint32_t guest_buf;
+    memcpy(&requested_len, arg, sizeof(requested_len));
+    memcpy(&guest_buf, (uint8_t *) arg + sizeof(requested_len),
+            sizeof(guest_buf));
+    if (requested_len < 0)
+        return _EINVAL;
+
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return errno_map();
+
+    size_t available = guest_buf == 0 ? SIZE_MAX : (size_t) requested_len;
+    size_t used = 0;
+    int err = 0;
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || ifa->ifa_addr == NULL ||
+                ifa->ifa_addr->sa_family != AF_INET)
+            continue;
+        if (strlen(ifa->ifa_name) >= IFNAMSIZ_)
+            continue;
+        if (available != SIZE_MAX && available - used < IFREQ32_SIZE_)
+            break;
+
+        uint8_t ifreq[IFREQ32_SIZE_] = {};
+        strncpy((char *) ifreq, ifa->ifa_name, IFNAMSIZ_ - 1);
+        const struct sockaddr_in *sin = (const void *) ifa->ifa_addr;
+        sock_linux_sockaddr4(ifreq + IFNAMSIZ_, &sin->sin_addr);
+
+        if (guest_buf != 0 &&
+                user_write((addr_t) guest_buf + used, ifreq, sizeof(ifreq))) {
+            err = _EFAULT;
+            break;
+        }
+        used += sizeof(ifreq);
+    }
+    freeifaddrs(ifap);
+    if (err < 0)
+        return err;
+    if (used > INT32_MAX)
+        return _EOVERFLOW;
+
+    int32_t returned_len = (int32_t) used;
+    memcpy(arg, &returned_len, sizeof(returned_len));
+    return 0;
+}
+
 static ssize_t sock_ioctl_size(int cmd) {
-    if (cmd == SIOCGIFNAME_ || cmd == SIOCGIFTXQLEN_)
-        return IFREQ32_SIZE_;
+    if (cmd == SIOCGIFCONF_)
+        return IFCONF32_SIZE_;
+    switch (cmd) {
+        case SIOCGIFNAME_:
+        case SIOCGIFFLAGS_:
+        case SIOCGIFADDR_:
+        case SIOCGIFDSTADDR_:
+        case SIOCGIFBRDADDR_:
+        case SIOCGIFNETMASK_:
+        case SIOCGIFMTU_:
+        case SIOCGIFHWADDR_:
+        case SIOCGIFINDEX_:
+        case SIOCGIFTXQLEN_:
+            return IFREQ32_SIZE_;
+    }
     return realfs_ioctl_size(cmd);
 }
 
 static int sock_ioctl(struct fd *fd, int cmd, void *arg) {
+    if (cmd == SIOCGIFCONF_)
+        return sock_ioctl_ifconf(arg);
+
     if (cmd == SIOCGIFNAME_) {
         // Linux userspace (including musl if_indextoname()) resolves an
         // interface index through SIOCGIFNAME. Translate the host index back
@@ -2371,20 +2470,106 @@ static int sock_ioctl(struct fd *fd, int cmd, void *arg) {
         strncpy(arg, ifname, IFNAMSIZ_ - 1);
         return 0;
     }
+
+    char ifname[IFNAMSIZ_ + 1];
+    sock_ifreq_name(arg, ifname);
+    unsigned ifindex = if_nametoindex(ifname);
+    if (ifindex == 0)
+        return _ENODEV;
+
+    if (cmd == SIOCGIFINDEX_) {
+        int32_t index = (int32_t) ifindex;
+        memcpy((uint8_t *) arg + IFNAMSIZ_, &index, sizeof(index));
+        return 0;
+    }
+
     if (cmd == SIOCGIFTXQLEN_) {
-        // Linux i386 struct ifreq is 32 bytes: a 16-byte interface name
-        // followed by a 16-byte union. Darwin/iOS has no SIOCGIFTXQLEN
-        // equivalent, so report a neutral queue length for host interfaces.
-        char ifname[IFNAMSIZ_ + 1];
-        memcpy(ifname, arg, IFNAMSIZ_);
-        ifname[IFNAMSIZ_] = '\0';
-        if (if_nametoindex(ifname) == 0)
-            return _ENODEV;
+        // Darwin/iOS has no SIOCGIFTXQLEN equivalent. A neutral queue length
+        // is sufficient for Linux tools that use this as display metadata.
         int32_t qlen = 0;
         memcpy((uint8_t *) arg + IFNAMSIZ_, &qlen, sizeof(qlen));
         return 0;
     }
-    return realfs_ioctl(fd, cmd, arg);
+
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return errno_map();
+
+    int result = 0;
+    struct ifaddrs *ifa = sock_find_ifaddr(ifap, ifname, AF_UNSPEC);
+    if (ifa == NULL) {
+        result = _ENODEV;
+        goto out;
+    }
+
+    switch (cmd) {
+        case SIOCGIFFLAGS_: {
+            int16_t flags = (int16_t) netlink_linux_if_flags(ifa->ifa_flags);
+            memcpy((uint8_t *) arg + IFNAMSIZ_, &flags, sizeof(flags));
+            break;
+        }
+        case SIOCGIFMTU_: {
+            uint32_t mtu;
+            if (!netlink_link_mtu(ifap, ifname, &mtu)) {
+                result = _EOPNOTSUPP;
+                break;
+            }
+            int32_t linux_mtu = (int32_t) mtu;
+            memcpy((uint8_t *) arg + IFNAMSIZ_, &linux_mtu,
+                    sizeof(linux_mtu));
+            break;
+        }
+        case SIOCGIFHWADDR_: {
+            uint8_t *sa = (uint8_t *) arg + IFNAMSIZ_;
+            memset(sa, 0, 16);
+            uint16_t type = (ifa->ifa_flags & IFF_LOOPBACK)
+                ? ARPHRD_LOOPBACK_
+                : (ifa->ifa_flags & IFF_POINTOPOINT)
+                    ? ARPHRD_NONE_ : ARPHRD_ETHER_;
+            memcpy(sa, &type, sizeof(type));
+            uint8_t hw[14] = {};
+            size_t hwlen = netlink_hwaddr(ifap, ifname, hw, sizeof(hw));
+            if (hwlen != 0)
+                memcpy(sa + 2, hw, hwlen);
+            break;
+        }
+        case SIOCGIFADDR_:
+        case SIOCGIFDSTADDR_:
+        case SIOCGIFBRDADDR_:
+        case SIOCGIFNETMASK_: {
+            struct ifaddrs *inet = sock_find_ifaddr(ifap, ifname, AF_INET);
+            if (inet == NULL) {
+                result = _EADDRNOTAVAIL;
+                break;
+            }
+
+            const struct sockaddr *host_sa = NULL;
+            if (cmd == SIOCGIFADDR_)
+                host_sa = inet->ifa_addr;
+            else if (cmd == SIOCGIFDSTADDR_)
+                host_sa = inet->ifa_dstaddr;
+            else if (cmd == SIOCGIFBRDADDR_)
+                host_sa = inet->ifa_broadaddr;
+            else
+                host_sa = inet->ifa_netmask;
+
+            if (host_sa == NULL || host_sa->sa_family != AF_INET) {
+                result = _EADDRNOTAVAIL;
+                break;
+            }
+            const struct sockaddr_in *sin = (const void *) host_sa;
+            sock_linux_sockaddr4((uint8_t *) arg + IFNAMSIZ_,
+                    &sin->sin_addr);
+            break;
+        }
+        default:
+            result = realfs_ioctl(fd, cmd, arg);
+            break;
+    }
+
+out:
+    freeifaddrs(ifap);
+    return result;
 }
 
 static int sock_close(struct fd *fd) {
