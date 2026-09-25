@@ -132,6 +132,24 @@ jobs:
           fi
           echo 'PASS: interface transmit-queue ioctl emits no compatibility warnings'
 
+      - name: Exercise legacy interface ioctl consumers
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ifconfig -a \
+            >ifconfig.txt 2>ifconfig.strace
+          cat ifconfig.txt
+          tail -n 200 ifconfig.strace || true
+
+          grep -Eq '^lo([[:space:]]|:)' ifconfig.txt
+          grep -Fq '127.0.0.1' ifconfig.txt
+          if grep -Eqi 'ioctl.*failed|not supported' ifconfig.strace; then
+            echo 'FAIL: BusyBox ifconfig hit an interface ioctl compatibility error'
+            exit 1
+          fi
+          echo 'PASS: BusyBox ifconfig can enumerate/query host interfaces'
+
       - name: Stress repeated NETLINK_ROUTE requests
         timeout-minutes: 2
         run: |
