@@ -416,6 +416,17 @@ jobs:
           fi
           echo 'PASS: /proc/net/unix exposes guest Unix listeners and ss can fall back to it'
 
+          timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c '
+            cat /proc/net/raw
+            cat /proc/net/raw6
+            ss -wn
+          ' >ss-raw.txt 2>ss-raw.strace
+          if grep -Eqi 'cannot open /proc/net/raw|No such file or directory' ss-raw.strace; then
+            echo 'FAIL: ss fallback could not read raw socket procfs tables'
+            exit 1
+          fi
+          echo 'PASS: raw socket procfs tables support ss fallback'
+
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
         timeout-minutes: 2
         run: |
