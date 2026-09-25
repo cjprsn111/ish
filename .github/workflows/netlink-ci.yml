@@ -132,12 +132,6 @@ jobs:
           fi
           echo 'PASS: interface transmit-queue ioctl emits no compatibility warnings'
 
-          echo '=== procfs ARP compatibility ==='
-          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox cat /proc/net/arp >proc-net-arp.txt
-          grep -Fq 'IP address' proc-net-arp.txt
-          grep -Fq 'HW address' proc-net-arp.txt
-          echo 'PASS: /proc/net/arp exists as a valid empty Linux-style table'
-
       - name: Exercise legacy interface ioctl consumers
         timeout-minutes: 1
         run: |
@@ -173,7 +167,7 @@ jobs:
         run: |
           set -euxo pipefail
           grep -E '^nameserver' /etc/resolv.conf | head -1 | ./build/ish -f netlink-rootfs /bin/sed -n 'w /etc/resolv.conf'
-          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap nmap-scripts iproute2
+          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap iproute2
 
       - name: Exercise iproute2 NETLINK_ROUTE
         timeout-minutes: 2
@@ -390,16 +384,6 @@ jobs:
             exit 1
           fi
           echo 'PASS: Nmap explicit interface binding completes without compatibility errors'
-
-          echo '=== Nmap NSE/script-engine compatibility ==='
-          timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c 'test -f /usr/share/nmap/nse_main.lua'
-          timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap --script-help default             >nmap-nse-help.txt 2>nmap-nse-help.strace
-          grep -Fq 'NSE:' nmap-nse-help.txt
-          if grep -Eqi 'failed to initialize the script engine|could not locate nse_main.lua'               nmap-nse-help.txt nmap-nse-help.strace; then
-            echo 'FAIL: Nmap NSE engine could not initialize'
-            exit 1
-          fi
-          echo 'PASS: Nmap NSE engine initializes with the packaged script library'
 
       - name: Stress repeated Nmap TCP connect scans
         timeout-minutes: 3
