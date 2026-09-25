@@ -23,6 +23,7 @@ on:
       - '.github/workflows/ios-test-build.yml'
       - 'IPHONE_TEST.md'
       - 'CJ_KALI_SETUP.sh'
+      - 'CJ_KALI_STATUS.sh'
 
 concurrency:
   group: cj-netlink-ios-candidate-${{ github.ref }}
@@ -58,7 +59,8 @@ jobs:
           APP="$(find build-ios/Build/Products -type d -name 'iSH.app' -print -quit)"
           test -n "$APP"
           cp CJ_KALI_SETUP.sh "$APP/CJ_KALI_SETUP.sh"
-          chmod 0644 "$APP/CJ_KALI_SETUP.sh"
+          cp CJ_KALI_STATUS.sh "$APP/CJ_KALI_STATUS.sh"
+          chmod 0644 "$APP/CJ_KALI_SETUP.sh" "$APP/CJ_KALI_STATUS.sh"
 
       - name: Validate unsigned arm64 bundle
         run: |
@@ -72,6 +74,7 @@ jobs:
           test -f "$MAIN"
           test -f "$EXT"
           test -f "$APP/CJ_KALI_SETUP.sh"
+          test -f "$APP/CJ_KALI_STATUS.sh"
 
           MAIN_ARCHS="$(xcrun lipo -archs "$MAIN")"
           EXT_ARCHS="$(xcrun lipo -archs "$EXT")"
@@ -127,5 +130,6 @@ jobs:
             CJ-Netlink-build-info.txt
             IPHONE_TEST.md
             CJ_KALI_SETUP.sh
+            CJ_KALI_STATUS.sh
           if-no-files-found: error
           retention-days: 14
