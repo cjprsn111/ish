@@ -241,6 +241,30 @@ jobs:
           grep -Eqi 'operation not supported|not supported' iproute2-mutation.strace
           echo 'PASS: unsupported mutation returns a Linux-style Netlink protocol error'
 
+          echo '=== additional rtnetlink mutation error coverage ==='
+          check_unsupported_mutation() {
+            name="$1"
+            shift
+            set +e
+            timeout 20s ./build/ish -f netlink-rootfs /sbin/ip "$@" \
+              >"iproute2-$name.txt" 2>"iproute2-$name.strace"
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then
+              echo "FAIL: unsupported ip $* mutation unexpectedly succeeded"
+              exit 1
+            fi
+            if [ "$rc" -eq 124 ]; then
+              echo "FAIL: unsupported ip $* mutation hung waiting for Netlink error"
+              exit 1
+            fi
+            grep -Eqi 'operation not supported|not supported' "iproute2-$name.strace"
+            echo "PASS: ip $* returned EOPNOTSUPP without hanging"
+          }
+          check_unsupported_mutation route-del route del 198.51.100.0/24 dev lo
+          check_unsupported_mutation addr-add addr add 198.51.100.1/32 dev lo
+          check_unsupported_mutation link-set link set dev lo mtu 65535
+
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
