@@ -1,6 +1,8 @@
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <inttypes.h>
 #include <ifaddrs.h>
+#include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -191,6 +193,74 @@ static unsigned proc_net_prefix_bits(const uint8_t *mask, size_t len) {
     return bits;
 }
 
+static int proc_net_probe_default_interface(int family, const void *dst,
+        char ifname[IFNAMSIZ]) {
+    int fd = socket(family, SOCK_DGRAM, 0);
+    if (fd < 0)
+        return -1;
+
+    struct sockaddr_storage target = {};
+    socklen_t target_len;
+    if (family == AF_INET) {
+        struct sockaddr_in *sin = (void *) &target;
+        sin->sin_family = AF_INET;
+        sin->sin_port = htons(9);
+        memcpy(&sin->sin_addr, dst, sizeof(sin->sin_addr));
+        target_len = sizeof(*sin);
+    } else if (family == AF_INET6) {
+        struct sockaddr_in6 *sin6 = (void *) &target;
+        sin6->sin6_family = AF_INET6;
+        sin6->sin6_port = htons(9);
+        memcpy(&sin6->sin6_addr, dst, sizeof(sin6->sin6_addr));
+        target_len = sizeof(*sin6);
+    } else {
+        close(fd);
+        return -1;
+    }
+
+    if (connect(fd, (void *) &target, target_len) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    struct sockaddr_storage local = {};
+    socklen_t local_len = sizeof(local);
+    if (getsockname(fd, (void *) &local, &local_len) < 0) {
+        close(fd);
+        return -1;
+    }
+    close(fd);
+
+    size_t addr_len = family == AF_INET ? sizeof(struct in_addr) :
+                                         sizeof(struct in6_addr);
+    const void *local_addr = family == AF_INET
+        ? (const void *) &((struct sockaddr_in *) &local)->sin_addr
+        : (const void *) &((struct sockaddr_in6 *) &local)->sin6_addr;
+
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return -1;
+
+    int found = -1;
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || ifa->ifa_addr == NULL ||
+                ifa->ifa_addr->sa_family != family)
+            continue;
+        const void *candidate = family == AF_INET
+            ? (const void *) &((struct sockaddr_in *) ifa->ifa_addr)->sin_addr
+            : (const void *) &((struct sockaddr_in6 *) ifa->ifa_addr)->sin6_addr;
+        if (memcmp(candidate, local_addr, addr_len) == 0) {
+            strncpy(ifname, ifa->ifa_name, IFNAMSIZ - 1);
+            ifname[IFNAMSIZ - 1] = '\0';
+            found = 0;
+            break;
+        }
+    }
+
+    freeifaddrs(ifap);
+    return found;
+}
+
 static int proc_show_net_route(struct proc_entry *UNUSED(entry),
         struct proc_data *buf) {
     struct ifaddrs *ifap;
@@ -220,6 +290,18 @@ static int proc_show_net_route(struct proc_entry *UNUSED(entry),
     }
 
     freeifaddrs(ifap);
+
+    // /proc/net/route consumers such as Nmap/libdnet do not use rtnetlink
+    // for route-table enumeration. Publish the host-selected default device
+    // here as a direct default route. Keep the gateway zero unless iOS
+    // exposes a trustworthy gateway elsewhere; never invent one.
+    const struct in_addr probe = {.s_addr = htonl(0x01010101)};
+    char default_if[IFNAMSIZ] = {};
+    if (proc_net_probe_default_interface(AF_INET, &probe, default_if) == 0) {
+        proc_printf(buf,
+                "%s\t%08X\t%08X\t%04X\t0\t0\t0\t%08X\t0\t0\t0\n",
+                default_if, 0u, 0u, 0x0001u, 0u);
+    }
     return 0;
 }
 
@@ -293,6 +375,24 @@ static int proc_show_net_ipv6_route(struct proc_entry *UNUSED(entry),
     }
 
     freeifaddrs(ifap);
+
+    struct in6_addr probe6;
+    char default_if[IFNAMSIZ] = {};
+    if (inet_pton(AF_INET6, "2606:4700:4700::1111", &probe6) == 1 &&
+            proc_net_probe_default_interface(AF_INET6, &probe6,
+                    default_if) == 0) {
+        for (size_t i = 0; i < 16; i++)
+            proc_printf(buf, "00");
+        proc_printf(buf, " 00 ");
+        for (size_t i = 0; i < 16; i++)
+            proc_printf(buf, "00");
+        proc_printf(buf, " 00 ");
+        for (size_t i = 0; i < 16; i++)
+            proc_printf(buf, "00");
+        proc_printf(buf,
+                " 00000000 00000000 00000000 00000001 %s\n",
+                default_if);
+    }
     return 0;
 }
 
