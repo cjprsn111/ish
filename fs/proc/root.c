@@ -13,6 +13,7 @@
 #include "kernel/calls.h"
 #include "kernel/task.h"
 #include "fs/fd.h"
+#include "fs/inode.h"
 #include "fs/sock.h"
 #include "fs/proc.h"
 #include "platform/platform.h"
@@ -433,7 +434,8 @@ static size_t proc_collect_inet_sockets(struct proc_inet_socket **out) {
             if (fd == NULL || fd->ops != &socket_fdops || fd->real_fd < 0)
                 continue;
             if (fd->socket.domain != AF_INET_ &&
-                    fd->socket.domain != AF_INET6_)
+                    fd->socket.domain != AF_INET6_ &&
+                    fd->socket.domain != AF_LOCAL_)
                 continue;
             if (fd->socket.type != SOCK_STREAM_ &&
                     fd->socket.type != SOCK_DGRAM_)
@@ -591,6 +593,68 @@ static int proc_show_net_udp6(struct proc_entry *UNUSED(entry),
     return proc_show_net_inet(buf, AF_INET6, SOCK_DGRAM_);
 }
 
+static int proc_show_net_unix(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct proc_inet_socket *sockets;
+    size_t count = proc_collect_inet_sockets(&sockets);
+
+    proc_printf(buf,
+            "Num       RefCount Protocol Flags    Type St Inode Path\n");
+
+    unsigned slot = 1;
+    for (size_t i = 0; i < count; i++) {
+        struct fd *fd = sockets[i].fd;
+        if (fd->socket.domain != AF_LOCAL_)
+            continue;
+
+        int accepting = 0;
+        socklen_t accepting_len = sizeof(accepting);
+        int is_listener = getsockopt(fd->real_fd, SOL_SOCKET, SO_ACCEPTCONN,
+                &accepting, &accepting_len) == 0 && accepting;
+
+        struct sockaddr_storage peer = {};
+        socklen_t peer_len = sizeof(peer);
+        int is_connected =
+            getpeername(fd->real_fd, (void *) &peer, &peer_len) == 0;
+
+        unsigned flags = is_listener ? 0x00010000u : 0;
+        unsigned state = is_connected ? 3u : 1u;
+        unsigned inode = fd->socket.unix_name_inode != NULL
+            ? (unsigned) fd->socket.unix_name_inode->number : 0;
+
+        char path[110] = {};
+        if (fd->socket.unix_name_len != 0) {
+            size_t len = fd->socket.unix_name_len;
+            if (len > sizeof(fd->socket.unix_name))
+                len = sizeof(fd->socket.unix_name);
+
+            if (fd->socket.unix_name[0] == '\0') {
+                path[0] = '@';
+                size_t copy = len > 1 ? len - 1 : 0;
+                if (copy > sizeof(path) - 2)
+                    copy = sizeof(path) - 2;
+                memcpy(path + 1, fd->socket.unix_name + 1, copy);
+                path[1 + copy] = '\0';
+            } else {
+                if (len > sizeof(path) - 1)
+                    len = sizeof(path) - 1;
+                memcpy(path, fd->socket.unix_name, len);
+                path[len] = '\0';
+            }
+        }
+
+        proc_printf(buf,
+                "%016X: 00000002 00000000 %08X %04X %02X %u",
+                slot++, flags, (unsigned) fd->socket.type, state, inode);
+        if (path[0] != '\0')
+            proc_printf(buf, " %s", path);
+        proc_printf(buf, "\n");
+    }
+
+    proc_release_inet_sockets(sockets, count);
+    return 0;
+}
+
 static int proc_show_net_arp(struct proc_entry *UNUSED(entry),
         struct proc_data *buf) {
     // iOS does not expose a stable public ARP/NDP table to sandboxed apps.
@@ -611,6 +675,7 @@ static struct proc_children proc_net_children = PROC_CHILDREN({
     {"tcp6", .show = proc_show_net_tcp6},
     {"udp", .show = proc_show_net_udp},
     {"udp6", .show = proc_show_net_udp6},
+    {"unix", .show = proc_show_net_unix},
 });
 
 static int proc_readlink_self(struct proc_entry *UNUSED(entry), char *buf) {
