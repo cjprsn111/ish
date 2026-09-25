@@ -604,6 +604,97 @@ static int proc_show_net_raw6(struct proc_entry *UNUSED(entry),
     return proc_show_net_inet(buf, AF_INET6, SOCK_RAW_);
 }
 
+struct proc_socket_counts {
+    unsigned total;
+    unsigned tcp4;
+    unsigned tcp6;
+    unsigned tcp_established;
+    unsigned udp4;
+    unsigned udp6;
+    unsigned raw4;
+    unsigned raw6;
+};
+
+static void proc_count_sockets(struct proc_socket_counts *counts) {
+    memset(counts, 0, sizeof(*counts));
+
+    struct proc_inet_socket *sockets;
+    size_t count = proc_collect_inet_sockets(&sockets);
+    counts->total = (unsigned) count;
+
+    for (size_t i = 0; i < count; i++) {
+        struct fd *fd = sockets[i].fd;
+        if (fd->socket.domain == AF_INET_) {
+            if (fd->socket.type == SOCK_STREAM_) {
+                counts->tcp4++;
+                if (proc_tcp_state(fd) == 0x01)
+                    counts->tcp_established++;
+            } else if (fd->socket.type == SOCK_DGRAM_ &&
+                    (fd->socket.protocol == 0 ||
+                     fd->socket.protocol == IPPROTO_UDP)) {
+                counts->udp4++;
+            } else if (fd->socket.type == SOCK_RAW_) {
+                counts->raw4++;
+            }
+        } else if (fd->socket.domain == AF_INET6_) {
+            if (fd->socket.type == SOCK_STREAM_) {
+                counts->tcp6++;
+                if (proc_tcp_state(fd) == 0x01)
+                    counts->tcp_established++;
+            } else if (fd->socket.type == SOCK_DGRAM_ &&
+                    (fd->socket.protocol == 0 ||
+                     fd->socket.protocol == IPPROTO_UDP)) {
+                counts->udp6++;
+            } else if (fd->socket.type == SOCK_RAW_) {
+                counts->raw6++;
+            }
+        }
+    }
+
+    proc_release_inet_sockets(sockets, count);
+}
+
+static int proc_show_net_sockstat(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct proc_socket_counts counts;
+    proc_count_sockets(&counts);
+
+    proc_printf(buf, "sockets: used %u\n", counts.total);
+    proc_printf(buf,
+            "TCP: inuse %u orphan 0 tw 0 alloc %u mem 0\n",
+            counts.tcp4, counts.tcp4);
+    proc_printf(buf, "UDP: inuse %u mem 0\n", counts.udp4);
+    proc_printf(buf, "UDPLITE: inuse 0\n");
+    proc_printf(buf, "RAW: inuse %u\n", counts.raw4);
+    proc_printf(buf, "FRAG: inuse 0 memory 0\n");
+    return 0;
+}
+
+static int proc_show_net_sockstat6(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct proc_socket_counts counts;
+    proc_count_sockets(&counts);
+
+    proc_printf(buf, "TCP6: inuse %u\n", counts.tcp6);
+    proc_printf(buf, "UDP6: inuse %u\n", counts.udp6);
+    proc_printf(buf, "UDPLITE6: inuse 0\n");
+    proc_printf(buf, "RAW6: inuse %u\n", counts.raw6);
+    proc_printf(buf, "FRAG6: inuse 0 memory 0\n");
+    return 0;
+}
+
+static int proc_show_net_snmp(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    struct proc_socket_counts counts;
+    proc_count_sockets(&counts);
+
+    // Keep this intentionally small: ss only needs Tcp/CurrEstab here.
+    // Do not manufacture host packet counters that iOS does not expose.
+    proc_printf(buf, "Tcp: CurrEstab\n");
+    proc_printf(buf, "Tcp: %u\n", counts.tcp_established);
+    return 0;
+}
+
 static int proc_show_net_unix(struct proc_entry *UNUSED(entry),
         struct proc_data *buf) {
     struct proc_inet_socket *sockets;
@@ -684,6 +775,9 @@ static struct proc_children proc_net_children = PROC_CHILDREN({
     {"raw", .show = proc_show_net_raw},
     {"raw6", .show = proc_show_net_raw6},
     {"route", .show = proc_show_net_route},
+    {"snmp", .show = proc_show_net_snmp},
+    {"sockstat", .show = proc_show_net_sockstat},
+    {"sockstat6", .show = proc_show_net_sockstat6},
     {"tcp", .show = proc_show_net_tcp},
     {"tcp6", .show = proc_show_net_tcp6},
     {"udp", .show = proc_show_net_udp},
