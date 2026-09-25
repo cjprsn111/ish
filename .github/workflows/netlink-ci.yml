@@ -34,7 +34,7 @@ jobs:
 
       - name: Prepare Alpine x86 rootfs
         run: |
-          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.14/releases/x86/alpine-minirootfs-3.14.3-x86.tar.gz -O alpine.tar.gz
+          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86/alpine-minirootfs-3.19.9-x86.tar.gz -O alpine.tar.gz
           ./build/tools/fakefsify alpine.tar.gz netlink-rootfs
 
       - name: Exercise virtual NETLINK_ROUTE
