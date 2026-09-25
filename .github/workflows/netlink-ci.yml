@@ -297,9 +297,23 @@ jobs:
             timeout 10s ./build/ish -f netlink-rootfs /sbin/ip -6 route get ::1 >/dev/null
           done
 
-      - name: Exercise Nmap TCP connect scan
-        timeout-minutes: 2
+      - name: Exercise Nmap interface discovery and TCP connect scan
+        timeout-minutes: 3
         run: |
+          set -euo pipefail
+
+          echo '=== Nmap interface and route discovery ==='
+          timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap --iflist \
+            >nmap-iflist.txt 2>nmap-iflist.strace
+          cat nmap-iflist.txt
+          tail -n 200 nmap-iflist.strace || true
+          grep -Fq 'lo' nmap-iflist.txt
+          if grep -Eqi 'failed to open|cannot open|netlink.*error|socket_bindtodevice:' nmap-iflist.strace; then
+            echo 'FAIL: Nmap interface discovery emitted a network compatibility error'
+            exit 1
+          fi
+          echo 'PASS: Nmap interface discovery completed with loopback visible'
+
           set +e
           timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -p 22,80,443 127.0.0.1 >nmap.txt 2>nmap.strace
           rc=$?
@@ -311,17 +325,69 @@ jobs:
             exit "$rc"
           fi
           grep -Fq 'Nmap scan report for localhost (127.0.0.1)' nmap.txt
-          grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' nmap.txt
-          grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' nmap.txt
-          grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' nmap.txt
+          grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh
+      - name: Stress repeated Nmap TCP connect scans
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 5); do
+            out="nmap-stress-$i.txt"
+            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
+            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
+            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
+            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
+            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
+          done
+ nmap.txt
+          grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http
+      - name: Stress repeated Nmap TCP connect scans
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 5); do
+            out="nmap-stress-$i.txt"
+            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
+            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
+            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
+            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
+            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
+          done
+ nmap.txt
+          grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https
+      - name: Stress repeated Nmap TCP connect scans
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 5); do
+            out="nmap-stress-$i.txt"
+            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
+            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
+            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
+            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
+            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
+          done
+ nmap.txt
           grep -Fq 'Nmap done: 1 IP address (1 host up)' nmap.txt
 
-          echo '=== Nmap interface binding compatibility ==='
-          if grep -Fq 'socket_bindtodevice:' nmap.strace; then
-            echo 'FAIL: Nmap TCP connect scan emitted an SO_BINDTODEVICE compatibility error'
+          echo '=== Nmap explicit interface binding compatibility ==='
+          set +e
+          timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -e lo -p 22,80,443 127.0.0.1 \
+            >nmap-bound.txt 2>nmap-bound.strace
+          bound_rc=$?
+          set -e
+          cat nmap-bound.txt || true
+          tail -n 200 nmap-bound.strace || true
+          if [ "$bound_rc" -ne 0 ]; then
+            echo "FAIL: explicitly bound Nmap scan exited with status $bound_rc"
+            exit "$bound_rc"
+          fi
+          grep -Fq 'Nmap scan report for 127.0.0.1' nmap-bound.txt
+          grep -Fq 'Nmap done: 1 IP address (1 host up)' nmap-bound.txt
+          if grep -Fq 'socket_bindtodevice:' nmap-bound.strace; then
+            echo 'FAIL: explicitly bound Nmap scan emitted an SO_BINDTODEVICE compatibility error'
             exit 1
           fi
-          echo 'PASS: Nmap TCP connect scan emits no SO_BINDTODEVICE compatibility warnings'
+          echo 'PASS: Nmap explicit interface binding completes without compatibility errors'
 
       - name: Stress repeated Nmap TCP connect scans
         timeout-minutes: 3
