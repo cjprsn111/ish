@@ -384,7 +384,9 @@ jobs:
             sleep 1
             cat /proc/net/unix
             ss -xl
-            kill "$logger_pid"
+            kill "$logger_pid" 2>/dev/null || true
+            wait "$logger_pid" 2>/dev/null || true
+            exit 0
           ' >ss-unix.txt 2>ss-unix.strace
 
           cat ss-unix.txt
