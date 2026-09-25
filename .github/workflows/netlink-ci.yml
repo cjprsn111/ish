@@ -427,6 +427,21 @@ jobs:
           fi
           echo 'PASS: raw socket procfs tables support ss fallback'
 
+          timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c '
+            cat /proc/net/sockstat
+            cat /proc/net/sockstat6
+            cat /proc/net/snmp
+            ss -s
+          ' >ss-summary.txt 2>ss-summary.strace
+          cat ss-summary.txt
+          grep -Fq 'Total:' ss-summary.txt
+          grep -Fq 'TCP:' ss-summary.txt
+          if grep -Eqi 'get_sockstat|No such file or directory' ss-summary.strace; then
+            echo 'FAIL: ss summary could not read socket statistics'
+            exit 1
+          fi
+          echo 'PASS: ss summary reads guest socket statistics'
+
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
         timeout-minutes: 2
         run: |
