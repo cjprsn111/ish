@@ -102,6 +102,31 @@ NSArray<NSString *> *CurrentAppGroups(void) {
 }
 
 NSURL *ContainerURL(void) {
-    NSString *appGroup = CurrentAppGroups()[0];
-    return [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:appGroup];
+    NSFileManager *manager = NSFileManager.defaultManager;
+    NSArray<NSString *> *appGroups = CurrentAppGroups();
+
+    // Store roots in the shared app-group container when the signed build has
+    // that entitlement, which preserves normal iSH/File Provider behavior.
+    // Personal-team/sideload signing can legitimately strip the app-group
+    // entitlement; in that case containerURLForSecurityApplicationGroupIdentifier:
+    // returns nil and the historical code later passed a nil URL to
+    // createDirectoryAtURL:, crashing during launch.
+    for (NSString *appGroup in appGroups) {
+        NSURL *container =
+            [manager containerURLForSecurityApplicationGroupIdentifier:appGroup];
+        if (container != nil)
+            return container;
+    }
+
+    // A sideloaded networking test build does not require File Provider sharing.
+    // Fall back to this app's own persistent sandbox instead of crashing.
+    NSURL *fallback =
+        [manager URLsForDirectory:NSApplicationSupportDirectory
+                        inDomains:NSUserDomainMask].firstObject;
+    if (fallback == nil)
+        fallback = [NSURL fileURLWithPath:NSHomeDirectory() isDirectory:YES];
+
+    NSLog(@"App-group container unavailable; using app sandbox at %@",
+          fallback.path);
+    return fallback;
 }
