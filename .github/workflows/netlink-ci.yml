@@ -325,48 +325,9 @@ jobs:
             exit "$rc"
           fi
           grep -Fq 'Nmap scan report for localhost (127.0.0.1)' nmap.txt
-          grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh
-      - name: Stress repeated Nmap TCP connect scans
-        timeout-minutes: 3
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 5); do
-            out="nmap-stress-$i.txt"
-            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
-            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
-            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
-            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
-            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
-          done
- nmap.txt
-          grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http
-      - name: Stress repeated Nmap TCP connect scans
-        timeout-minutes: 3
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 5); do
-            out="nmap-stress-$i.txt"
-            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
-            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
-            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
-            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
-            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
-          done
- nmap.txt
-          grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https
-      - name: Stress repeated Nmap TCP connect scans
-        timeout-minutes: 3
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 5); do
-            out="nmap-stress-$i.txt"
-            timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >"$out" 2>/dev/null
-            grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' "$out"
-            grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' "$out"
-            grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' "$out"
-            grep -Fq 'Nmap done: 1 IP address (1 host up)' "$out"
-          done
- nmap.txt
+          grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' nmap.txt
+          grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' nmap.txt
+          grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' nmap.txt
           grep -Fq 'Nmap done: 1 IP address (1 host up)' nmap.txt
 
           echo '=== Nmap explicit interface binding compatibility ==='
