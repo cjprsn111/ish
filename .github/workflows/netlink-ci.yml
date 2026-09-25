@@ -160,15 +160,13 @@ jobs:
           grep -Fq '127.0.0.0' netstat-route.txt
           echo 'PASS: classic netstat route display works'
 
-          sudo setcap cap_net_raw+ep ./build/ish
-          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ping -c 1 -W 2 127.0.0.1 >ping-loopback.txt 2>ping-loopback.strace
+          timeout 20s sudo ./build/ish -f netlink-rootfs /bin/busybox ping -c 1 -W 2 127.0.0.1 >ping-loopback.txt 2>ping-loopback.strace
           cat ping-loopback.txt
           grep -Fq '127.0.0.1' ping-loopback.txt
 
-          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox traceroute -n -m 2 -w 2 127.0.0.1 >traceroute-loopback.txt 2>traceroute-loopback.strace
+          timeout 20s sudo ./build/ish -f netlink-rootfs /bin/busybox traceroute -n -m 2 -w 2 127.0.0.1 >traceroute-loopback.txt 2>traceroute-loopback.strace
           cat traceroute-loopback.txt
           grep -Fq '127.0.0.1' traceroute-loopback.txt
-          sudo setcap -r ./build/ish
 
           echo 'PASS: ping and traceroute work when the host permits ICMP sockets'
 
