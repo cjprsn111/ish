@@ -37,6 +37,17 @@ ip route get 127.0.0.1
 ip -6 route get ::1
 ```
 
+If the bundled `apk.ish.app` repository stalls at `APKINDEX.tar.gz` but DNS and a direct `wget` work, preserve the original repository list and use the matching official Alpine v3.19 repositories for the test session:
+
+```sh
+cp /etc/apk/repositories /etc/apk/repositories.cj-backup
+printf '%s\n' \
+  'https://dl-cdn.alpinelinux.org/alpine/v3.19/main' \
+  'https://dl-cdn.alpinelinux.org/alpine/v3.19/community' \
+  > /etc/apk/repositories
+apk update
+```
+
 Expected behavior:
 
 - `ip addr` and `ip link` complete without Netlink or ioctl compatibility errors.
@@ -44,15 +55,18 @@ Expected behavior:
 - Route lookups return the queried destination plus a usable `dev` and `src` where a route exists.
 - Loopback lookups resolve through `lo`.
 
-## Nmap TCP-connect smoke test
+## Nmap interface and TCP-connect smoke test
 
 Run:
 
 ```sh
+nmap -d --iflist
 nmap -sT -Pn -n -p 22,80,443 127.0.0.1
 ```
 
-The scan must complete without `socket_bindtodevice` compatibility errors. Port state depends on services running inside the installed image, so the key device-test requirement is that the scan completes normally and reports the host.
+`nmap -d --iflist` should enumerate the real iPhone interfaces instead of reporting `getinterfaces_dnet: intf_loop() failed`. It should also show connected routes and a host-selected default route when the host has one.
+
+The TCP-connect scan must complete without `socket_bindtodevice` compatibility errors. Port state depends on services and iOS policy on the installed device, so the key device-test requirement is that the scan completes normally and reports the host.
 
 ## Real-device observations to capture
 
@@ -64,5 +78,13 @@ Record:
 - Whether a default route/gateway is shown.
 - Nmap completion and any socket errors.
 - Whether behavior changes between Wi-Fi and cellular.
+
+For a cellular-focused validation, turn Wi-Fi off and confirm:
+
+```sh
+ip route get 1.1.1.1
+```
+
+selects the active `pdp_ip*` interface and a matching source address. A point-to-point cellular route does not require a traditional `via <gateway>` value; do not treat a missing gateway as a failure unless iOS actually exposes one.
 
 Do not use this test build to scan systems you do not own or have permission to test.
