@@ -5,11 +5,15 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <sys/ioctl.h>
 #include <string.h>
 #ifndef __APPLE__
 #include <linux/if_link.h>
 #endif
 #include "kernel/calls.h"
+#include "kernel/task.h"
+#include "fs/fd.h"
+#include "fs/sock.h"
 #include "fs/proc.h"
 #include "platform/platform.h"
 
@@ -396,6 +400,197 @@ static int proc_show_net_ipv6_route(struct proc_entry *UNUSED(entry),
     return 0;
 }
 
+extern const struct fd_ops socket_fdops;
+
+struct proc_inet_socket {
+    struct fd *fd;
+    uid_t_ uid;
+};
+
+static int proc_socket_seen(struct proc_inet_socket *sockets, size_t count,
+        struct fd *fd) {
+    for (size_t i = 0; i < count; i++)
+        if (sockets[i].fd == fd)
+            return 1;
+    return 0;
+}
+
+static size_t proc_collect_inet_sockets(struct proc_inet_socket **out) {
+    struct proc_inet_socket *sockets = NULL;
+    size_t count = 0;
+    size_t cap = 0;
+
+    lock(&pids_lock);
+    for (pid_t_ pid = 1; pid <= MAX_PID; pid++) {
+        struct task *task = pid_get_task(pid);
+        if (task == NULL || task->files == NULL)
+            continue;
+
+        struct fdtable *table = task->files;
+        lock(&table->lock);
+        for (unsigned i = 0; i < table->size; i++) {
+            struct fd *fd = table->files[i];
+            if (fd == NULL || fd->ops != &socket_fdops || fd->real_fd < 0)
+                continue;
+            if (fd->socket.domain != AF_INET_ &&
+                    fd->socket.domain != AF_INET6_)
+                continue;
+            if (fd->socket.type != SOCK_STREAM_ &&
+                    fd->socket.type != SOCK_DGRAM_)
+                continue;
+            if (proc_socket_seen(sockets, count, fd))
+                continue;
+
+            if (count == cap) {
+                size_t next = cap == 0 ? 16 : cap * 2;
+                struct proc_inet_socket *grown =
+                    realloc(sockets, next * sizeof(*grown));
+                if (grown == NULL)
+                    break;
+                sockets = grown;
+                cap = next;
+            }
+            sockets[count].fd = fd_retain(fd);
+            sockets[count].uid = task->euid;
+            count++;
+        }
+        unlock(&table->lock);
+    }
+    unlock(&pids_lock);
+
+    *out = sockets;
+    return count;
+}
+
+static void proc_release_inet_sockets(struct proc_inet_socket *sockets,
+        size_t count) {
+    for (size_t i = 0; i < count; i++)
+        fd_close(sockets[i].fd);
+    free(sockets);
+}
+
+static void proc_format_inet_addr(const struct sockaddr_storage *ss,
+        int family, char *out, size_t out_len, unsigned *port) {
+    if (family == AF_INET) {
+        const struct sockaddr_in *sin = (const void *) ss;
+        const uint8_t *a = (const uint8_t *) &sin->sin_addr;
+        snprintf(out, out_len, "%02X%02X%02X%02X",
+                a[3], a[2], a[1], a[0]);
+        *port = ntohs(sin->sin_port);
+        return;
+    }
+
+    const struct sockaddr_in6 *sin6 = (const void *) ss;
+    const uint8_t *a = (const uint8_t *) &sin6->sin6_addr;
+    size_t off = 0;
+    for (size_t word = 0; word < 4 && off + 8 < out_len; word++) {
+        int n = snprintf(out + off, out_len - off, "%02X%02X%02X%02X",
+                a[word * 4 + 3], a[word * 4 + 2],
+                a[word * 4 + 1], a[word * 4]);
+        if (n < 0)
+            break;
+        off += (size_t) n;
+    }
+    *port = ntohs(sin6->sin6_port);
+}
+
+static unsigned proc_tcp_state(struct fd *fd) {
+    int accepting = 0;
+    socklen_t accepting_len = sizeof(accepting);
+    if (getsockopt(fd->real_fd, SOL_SOCKET, SO_ACCEPTCONN,
+            &accepting, &accepting_len) == 0 && accepting)
+        return 0x0a; // TCP_LISTEN
+
+    struct sockaddr_storage peer = {};
+    socklen_t peer_len = sizeof(peer);
+    if (getpeername(fd->real_fd, (void *) &peer, &peer_len) == 0)
+        return 0x01; // TCP_ESTABLISHED
+
+    return 0x07; // TCP_CLOSE / not connected
+}
+
+static int proc_show_net_inet(struct proc_data *buf, int family,
+        int type) {
+    struct proc_inet_socket *sockets;
+    size_t count = proc_collect_inet_sockets(&sockets);
+
+    proc_printf(buf,
+            "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n");
+
+    unsigned slot = 0;
+    for (size_t i = 0; i < count; i++) {
+        struct fd *fd = sockets[i].fd;
+        if ((family == AF_INET && fd->socket.domain != AF_INET_) ||
+                (family == AF_INET6 && fd->socket.domain != AF_INET6_) ||
+                fd->socket.type != type)
+            continue;
+
+        if (type == SOCK_DGRAM_ &&
+                fd->socket.protocol != 0 &&
+                fd->socket.protocol != IPPROTO_UDP)
+            continue;
+
+        struct sockaddr_storage local = {};
+        struct sockaddr_storage remote = {};
+        socklen_t local_len = sizeof(local);
+        socklen_t remote_len = sizeof(remote);
+        if (getsockname(fd->real_fd, (void *) &local, &local_len) < 0)
+            continue;
+
+        int real_family = family == AF_INET ? AF_INET : AF_INET6;
+        if (((struct sockaddr *) &local)->sa_family != real_family)
+            continue;
+        if (getpeername(fd->real_fd, (void *) &remote, &remote_len) < 0)
+            ((struct sockaddr *) &remote)->sa_family = real_family;
+
+        char local_addr[33] = {};
+        char remote_addr[33] = {};
+        unsigned local_port = 0;
+        unsigned remote_port = 0;
+        proc_format_inet_addr(&local, family, local_addr,
+                sizeof(local_addr), &local_port);
+        proc_format_inet_addr(&remote, family, remote_addr,
+                sizeof(remote_addr), &remote_port);
+
+        int rx_queue = 0;
+        if (ioctl(fd->real_fd, FIONREAD, &rx_queue) < 0 || rx_queue < 0)
+            rx_queue = 0;
+
+        unsigned state = type == SOCK_STREAM_
+            ? proc_tcp_state(fd) : 0x07;
+
+        proc_printf(buf,
+                "%4u: %s:%04X %s:%04X %02X "
+                "00000000:%08X 00:00000000 00000000 "
+                "%5u 0 0 1 0000000000000000 0 0 0 2 -1\n",
+                slot++, local_addr, local_port, remote_addr, remote_port,
+                state, (unsigned) rx_queue, (unsigned) sockets[i].uid);
+    }
+
+    proc_release_inet_sockets(sockets, count);
+    return 0;
+}
+
+static int proc_show_net_tcp(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    return proc_show_net_inet(buf, AF_INET, SOCK_STREAM_);
+}
+
+static int proc_show_net_tcp6(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    return proc_show_net_inet(buf, AF_INET6, SOCK_STREAM_);
+}
+
+static int proc_show_net_udp(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    return proc_show_net_inet(buf, AF_INET, SOCK_DGRAM_);
+}
+
+static int proc_show_net_udp6(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    return proc_show_net_inet(buf, AF_INET6, SOCK_DGRAM_);
+}
+
 static int proc_show_net_arp(struct proc_entry *UNUSED(entry),
         struct proc_data *buf) {
     // iOS does not expose a stable public ARP/NDP table to sandboxed apps.
@@ -412,6 +607,10 @@ static struct proc_children proc_net_children = PROC_CHILDREN({
     {"if_inet6", .show = proc_show_net_if_inet6},
     {"ipv6_route", .show = proc_show_net_ipv6_route},
     {"route", .show = proc_show_net_route},
+    {"tcp", .show = proc_show_net_tcp},
+    {"tcp6", .show = proc_show_net_tcp6},
+    {"udp", .show = proc_show_net_udp},
+    {"udp6", .show = proc_show_net_udp6},
 });
 
 static int proc_readlink_self(struct proc_entry *UNUSED(entry), char *buf) {
