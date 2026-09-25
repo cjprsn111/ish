@@ -150,6 +150,25 @@ jobs:
           fi
           echo 'PASS: BusyBox ifconfig can enumerate/query host interfaces'
 
+      - name: Exercise classic network diagnostics
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox netstat -rn >netstat-route.txt 2>netstat-route.strace
+          cat netstat-route.txt
+          grep -Eq '(^|[[:space:]])127\.0\.0\.0([[:space:]]|$)' netstat-route.txt
+
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ping -c 1 -W 2 127.0.0.1 >ping-loopback.txt 2>ping-loopback.strace
+          cat ping-loopback.txt
+          grep -Eq '1 packets transmitted, 1 packets received|1 packets transmitted, 1 received' ping-loopback.txt
+
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox traceroute -n -m 2 -w 2 127.0.0.1 >traceroute-loopback.txt 2>traceroute-loopback.strace
+          cat traceroute-loopback.txt
+          grep -Fq '127.0.0.1' traceroute-loopback.txt
+
+          echo 'PASS: classic route, ping, and traceroute diagnostics work on loopback'
+
       - name: Stress repeated NETLINK_ROUTE requests
         timeout-minutes: 2
         run: |
