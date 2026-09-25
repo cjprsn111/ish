@@ -178,6 +178,7 @@ jobs:
           run_iproute2 addr-v4 -4 addr
           run_iproute2 addr-v6 -6 addr
           run_iproute2 link link
+          run_iproute2 link-stats -s link
           run_iproute2 neigh neigh
           run_iproute2 route route
           run_iproute2 route-v4 -4 route
@@ -199,6 +200,12 @@ jobs:
             exit 1
           fi
           echo 'PASS: address dumps honor requested IPv4/IPv6 family'
+          grep -Eq '(^|[[:space:]])lo:' iproute2-link-stats.txt
+          if grep -Eq '(^|[[:space:]])if[0-9]+:' iproute2-link-stats.txt; then
+            echo 'FAIL: iproute2 -s link fell back to numeric interface names'
+            exit 1
+          fi
+          echo 'PASS: iproute2 link statistics view completes with named interfaces'
           test -f iproute2-neigh.txt
           echo 'PASS: iproute2 neighbor-table dump completed'
           grep -Eq 'dev [^ ]+' iproute2-route.txt
