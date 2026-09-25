@@ -1331,6 +1331,20 @@ static void fill_cred(struct ucred_ *cred) {
     cred->gid = current->egid;
 }
 
+static int sock_map_connect_error(struct fd *sock, int host_error) {
+#ifdef __APPLE__
+    // Darwin can report EPERM when a sandbox or network policy denies an
+    // Internet connection. Linux applications generally handle this class of
+    // connect denial as EACCES; Nmap, for example, classifies EACCES as an
+    // administratively filtered connection but treats EPERM as an unknown
+    // socket error. Keep EPERM unchanged for non-Internet sockets.
+    if ((sock->socket.domain == AF_INET_ || sock->socket.domain == AF_INET6_) &&
+            host_error == EPERM)
+        return _EACCES;
+#endif
+    return err_map(host_error);
+}
+
 int_t sys_connect(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
     STRACE("connect(%d, 0x%x, %d)", sock_fd, sockaddr_addr, sockaddr_len);
     struct fd *sock = sock_getfd(sock_fd);
@@ -1353,7 +1367,7 @@ int_t sys_connect(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
 
     err = connect(sock->real_fd, (void *) &sockaddr, sockaddr_len);
     if (err < 0)
-        return errno_map();
+        return sock_map_connect_error(sock, errno);
 
     if (sock->socket.domain == AF_LOCAL_) {
         fill_cred(&sock->socket.unix_cred);
@@ -1843,7 +1857,8 @@ int_t sys_getsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
         int err = getsockopt(sock->real_fd, SOL_SOCKET, SO_ERROR, &real_error, &real_error_len);
         if (err < 0)
             return errno_map();
-        *(dword_t *) value = real_error == 0 ? 0 : -err_map(real_error);
+        *(dword_t *) value = real_error == 0 ? 0 :
+            -sock_map_connect_error(sock, real_error);
         }
     } else if (level == IPPROTO_TCP && option == TCP_CONGESTION_) {
         value_len = strlen(DEFAULT_TCP_CONGESTION);
