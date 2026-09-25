@@ -113,6 +113,34 @@ struct rtattr_ {
 #define IFLA_ADDRESS_ 1
 #define IFLA_BROADCAST_ 2
 #define IFLA_IFNAME_ 3
+#define IFLA_STATS_ 7
+
+struct rtnl_link_stats_ {
+    uint32_t rx_packets;
+    uint32_t tx_packets;
+    uint32_t rx_bytes;
+    uint32_t tx_bytes;
+    uint32_t rx_errors;
+    uint32_t tx_errors;
+    uint32_t rx_dropped;
+    uint32_t tx_dropped;
+    uint32_t multicast;
+    uint32_t collisions;
+    uint32_t rx_length_errors;
+    uint32_t rx_over_errors;
+    uint32_t rx_crc_errors;
+    uint32_t rx_frame_errors;
+    uint32_t rx_fifo_errors;
+    uint32_t rx_missed_errors;
+    uint32_t tx_aborted_errors;
+    uint32_t tx_carrier_errors;
+    uint32_t tx_fifo_errors;
+    uint32_t tx_heartbeat_errors;
+    uint32_t tx_window_errors;
+    uint32_t rx_compressed;
+    uint32_t tx_compressed;
+    uint32_t rx_nohandler;
+};
 
 #define IFA_ADDRESS_ 1
 #define IFA_LOCAL_ 2

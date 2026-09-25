@@ -12,6 +12,7 @@
 #include <net/if_dl.h>
 #include <sys/sysctl.h>
 #else
+#include <linux/if_link.h>
 #include <netpacket/packet.h>
 #endif
 #include "kernel/calls.h"
@@ -217,6 +218,59 @@ static size_t netlink_hwaddr(struct ifaddrs *ifap, const char *name,
     return 0;
 }
 
+static int netlink_link_stats(struct ifaddrs *ifap, const char *name,
+        struct rtnl_link_stats_ *stats) {
+    memset(stats, 0, sizeof(*stats));
+
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || strcmp(ifa->ifa_name, name) != 0 ||
+                ifa->ifa_data == NULL)
+            continue;
+#ifdef __APPLE__
+        struct if_data *data = ifa->ifa_data;
+        stats->rx_packets = data->ifi_ipackets;
+        stats->tx_packets = data->ifi_opackets;
+        stats->rx_bytes = data->ifi_ibytes;
+        stats->tx_bytes = data->ifi_obytes;
+        stats->rx_errors = data->ifi_ierrors;
+        stats->tx_errors = data->ifi_oerrors;
+        stats->rx_dropped = data->ifi_iqdrops;
+        stats->multicast = data->ifi_imcasts;
+        stats->collisions = data->ifi_collisions;
+        return 1;
+#else
+        if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_PACKET)
+            continue;
+        const struct rtnl_link_stats *data = ifa->ifa_data;
+        stats->rx_packets = data->rx_packets;
+        stats->tx_packets = data->tx_packets;
+        stats->rx_bytes = data->rx_bytes;
+        stats->tx_bytes = data->tx_bytes;
+        stats->rx_errors = data->rx_errors;
+        stats->tx_errors = data->tx_errors;
+        stats->rx_dropped = data->rx_dropped;
+        stats->tx_dropped = data->tx_dropped;
+        stats->multicast = data->multicast;
+        stats->collisions = data->collisions;
+        stats->rx_length_errors = data->rx_length_errors;
+        stats->rx_over_errors = data->rx_over_errors;
+        stats->rx_crc_errors = data->rx_crc_errors;
+        stats->rx_frame_errors = data->rx_frame_errors;
+        stats->rx_fifo_errors = data->rx_fifo_errors;
+        stats->rx_missed_errors = data->rx_missed_errors;
+        stats->tx_aborted_errors = data->tx_aborted_errors;
+        stats->tx_carrier_errors = data->tx_carrier_errors;
+        stats->tx_fifo_errors = data->tx_fifo_errors;
+        stats->tx_heartbeat_errors = data->tx_heartbeat_errors;
+        stats->tx_window_errors = data->tx_window_errors;
+        stats->rx_compressed = data->rx_compressed;
+        stats->tx_compressed = data->tx_compressed;
+        return 1;
+#endif
+    }
+    return 0;
+}
+
 static unsigned netlink_prefix_bits(const uint8_t *mask, size_t len) {
     unsigned bits = 0;
     for (size_t i = 0; i < len; i++) {
@@ -272,6 +326,12 @@ static int netlink_build_links(struct netlink_builder *b, uint32_t seq) {
         size_t hwlen = netlink_hwaddr(ifap, ifa->ifa_name, hw, sizeof(hw));
         if (hwlen != 0) {
             err = netlink_add_attr(b, start, IFLA_ADDRESS_, hw, hwlen);
+            if (err < 0) break;
+        }
+
+        struct rtnl_link_stats_ stats;
+        if (netlink_link_stats(ifap, ifa->ifa_name, &stats)) {
+            err = netlink_add_attr(b, start, IFLA_STATS_, &stats, sizeof(stats));
             if (err < 0) break;
         }
     }
