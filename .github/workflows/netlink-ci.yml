@@ -263,7 +263,7 @@ jobs:
           }
           check_unsupported_mutation route-del route del 198.51.100.0/24 dev lo
           check_unsupported_mutation addr-add addr add 198.51.100.1/32 dev lo
-          check_unsupported_mutation link-set link set dev lo mtu 65535
+          check_unsupported_mutation link-add link add cjtest0 type dummy
 
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
