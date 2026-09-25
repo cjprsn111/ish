@@ -438,7 +438,8 @@ static size_t proc_collect_inet_sockets(struct proc_inet_socket **out) {
                     fd->socket.domain != AF_LOCAL_)
                 continue;
             if (fd->socket.type != SOCK_STREAM_ &&
-                    fd->socket.type != SOCK_DGRAM_)
+                    fd->socket.type != SOCK_DGRAM_ &&
+                    fd->socket.type != SOCK_RAW_)
                 continue;
             if (proc_socket_seen(sockets, count, fd))
                 continue;
@@ -593,6 +594,16 @@ static int proc_show_net_udp6(struct proc_entry *UNUSED(entry),
     return proc_show_net_inet(buf, AF_INET6, SOCK_DGRAM_);
 }
 
+static int proc_show_net_raw(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    return proc_show_net_inet(buf, AF_INET, SOCK_RAW_);
+}
+
+static int proc_show_net_raw6(struct proc_entry *UNUSED(entry),
+        struct proc_data *buf) {
+    return proc_show_net_inet(buf, AF_INET6, SOCK_RAW_);
+}
+
 static int proc_show_net_unix(struct proc_entry *UNUSED(entry),
         struct proc_data *buf) {
     struct proc_inet_socket *sockets;
@@ -670,6 +681,8 @@ static struct proc_children proc_net_children = PROC_CHILDREN({
     {"dev", .show = proc_show_net_dev},
     {"if_inet6", .show = proc_show_net_if_inet6},
     {"ipv6_route", .show = proc_show_net_ipv6_route},
+    {"raw", .show = proc_show_net_raw},
+    {"raw6", .show = proc_show_net_raw6},
     {"route", .show = proc_show_net_route},
     {"tcp", .show = proc_show_net_tcp},
     {"tcp6", .show = proc_show_net_tcp6},
