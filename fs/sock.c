@@ -721,6 +721,52 @@ static int netlink_add_default_route(struct netlink_builder *b, uint32_t seq,
     return 0;
 }
 
+static int netlink_route_is_onlink(uint8_t fake_family, unsigned ifindex,
+        const uint8_t *src, const uint8_t *dst) {
+    int family = fake_family == AF_INET_ ? AF_INET :
+                 fake_family == AF_INET6_ ? AF_INET6 : -1;
+    if (family < 0)
+        return 0;
+
+    size_t addr_len = family == AF_INET ? 4 : 16;
+    struct ifaddrs *ifap;
+    if (getifaddrs(&ifap) < 0)
+        return 0;
+
+    int onlink = 0;
+    for (struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL || ifa->ifa_netmask == NULL ||
+                ifa->ifa_addr->sa_family != family ||
+                if_nametoindex(ifa->ifa_name) != ifindex)
+            continue;
+
+        const uint8_t *addr;
+        const uint8_t *mask;
+        if (family == AF_INET) {
+            addr = (const uint8_t *) &((struct sockaddr_in *) ifa->ifa_addr)->sin_addr;
+            mask = (const uint8_t *) &((struct sockaddr_in *) ifa->ifa_netmask)->sin_addr;
+        } else {
+            addr = (const uint8_t *) &((struct sockaddr_in6 *) ifa->ifa_addr)->sin6_addr;
+            mask = (const uint8_t *) &((struct sockaddr_in6 *) ifa->ifa_netmask)->sin6_addr;
+        }
+        if (memcmp(addr, src, addr_len) != 0)
+            continue;
+
+        onlink = 1;
+        for (size_t i = 0; i < addr_len; i++) {
+            if ((src[i] & mask[i]) != (dst[i] & mask[i])) {
+                onlink = 0;
+                break;
+            }
+        }
+        if (onlink)
+            break;
+    }
+
+    freeifaddrs(ifap);
+    return onlink;
+}
+
 static int netlink_build_route_query(struct netlink_builder *b,
         const struct nlmsghdr_ *request, const uint8_t *request_data,
         size_t request_len) {
@@ -766,6 +812,15 @@ static int netlink_build_route_query(struct netlink_builder *b,
         if (err < 0) return err;
         err = netlink_add_attr(b, start, RTA_PREFSRC_, src, addr_len);
         if (err < 0) return err;
+
+        if (!netlink_route_is_onlink(req->family, index, src, dst)) {
+            uint8_t gateway[16] = {};
+            if (netlink_host_default_gateway(req->family, index, gateway) == 0) {
+                err = netlink_add_attr(b, start, RTA_GATEWAY_,
+                        gateway, addr_len);
+                if (err < 0) return err;
+            }
+        }
     }
     return 0;
 }
