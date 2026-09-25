@@ -177,14 +177,14 @@ void SyncHostname(void) {
         return;
 
     current = pid_get_task(1);
-    struct fd *fd = generic_open("/root/CJ_KALI_SETUP.sh",
+    struct fd *fd = generic_open("/usr/bin/cj-kali-setup",
             O_WRONLY_ | O_CREAT_ | O_TRUNC_, 0755);
     if (IS_ERR(fd))
         return;
 
     fd->ops->write(fd, helper.bytes, helper.length);
     fd_close(fd);
-    generic_setattrat(AT_PWD, "/root/CJ_KALI_SETUP.sh",
+    generic_setattrat(AT_PWD, "/usr/bin/cj-kali-setup",
             (struct attr) {.type = attr_mode, .mode = 0755}, false);
 #endif
 }
