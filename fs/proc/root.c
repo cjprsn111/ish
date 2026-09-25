@@ -565,9 +565,10 @@ static int proc_show_net_inet(struct proc_data *buf, int family,
         proc_printf(buf,
                 "%4u: %s:%04X %s:%04X %02X "
                 "00000000:%08X 00:00000000 00000000 "
-                "%5u 0 0 1 0000000000000000 0 0 0 2 -1\n",
+                "%5u 0 %lu 1 0000000000000000 0 0 0 2 -1\n",
                 slot++, local_addr, local_port, remote_addr, remote_port,
-                state, (unsigned) rx_queue, (unsigned) sockets[i].uid);
+                state, (unsigned) rx_queue, (unsigned) sockets[i].uid,
+                (unsigned long) fd->stat.inode);
     }
 
     proc_release_inet_sockets(sockets, count);
@@ -721,8 +722,7 @@ static int proc_show_net_unix(struct proc_entry *UNUSED(entry),
 
         unsigned flags = is_listener ? 0x00010000u : 0;
         unsigned state = is_connected ? 3u : 1u;
-        unsigned inode = fd->socket.unix_name_inode != NULL
-            ? (unsigned) fd->socket.unix_name_inode->number : 0;
+        unsigned long inode = (unsigned long) fd->stat.inode;
 
         char path[110] = {};
         if (fd->socket.unix_name_len != 0) {
@@ -746,7 +746,7 @@ static int proc_show_net_unix(struct proc_entry *UNUSED(entry),
         }
 
         proc_printf(buf,
-                "%016X: 00000002 00000000 %08X %04X %02X %u",
+                "%016X: 00000002 00000000 %08X %04X %02X %lu",
                 slot++, flags, (unsigned) fd->socket.type, state, inode);
         if (path[0] != '\0')
             proc_printf(buf, " %s", path);
