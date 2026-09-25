@@ -38,6 +38,8 @@
 @property BOOL exiting;
 @property SCNetworkReachabilityRef reachability;
 
+- (void)installCJToolsHelper;
+
 @end
 
 #if !ISH_LINUX
@@ -111,6 +113,7 @@ static NSString *const kSkipStartupMessage = @"Skip Startup Message";
 
     iosfs_init(); // let it mount any filesystems from user defaults
 
+    [self installCJToolsHelper];
     [self configureDns];
     
     exit_hook = ios_handle_exit;
@@ -161,6 +164,30 @@ void SyncHostname(void) {
     });
 }
 #endif
+
+- (void)installCJToolsHelper {
+#if !ISH_LINUX
+    NSURL *helperURL = [NSBundle.mainBundle URLForResource:@"CJ_KALI_SETUP"
+                                             withExtension:@"sh"];
+    if (helperURL == nil)
+        return;
+
+    NSData *helper = [NSData dataWithContentsOfURL:helperURL];
+    if (helper == nil)
+        return;
+
+    current = pid_get_task(1);
+    struct fd *fd = generic_open("/root/CJ_KALI_SETUP.sh",
+            O_WRONLY_ | O_CREAT_ | O_TRUNC_, 0755);
+    if (IS_ERR(fd))
+        return;
+
+    fd->ops->write(fd, helper.bytes, helper.length);
+    fd_close(fd);
+    generic_setattrat(AT_PWD, "/root/CJ_KALI_SETUP.sh",
+            (struct attr) {.type = attr_mode, .mode = 0755}, false);
+#endif
+}
 
 - (void)configureDns {
 #if !ISH_LINUX
