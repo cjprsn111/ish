@@ -168,6 +168,7 @@ struct rtnl_link_stats_ {
 
 #define ARPHRD_ETHER_ 1
 #define ARPHRD_LOOPBACK_ 772
+#define ARPHRD_NONE_ 0xfffe
 
 size_t sockaddr_size(void *p);
 // result comes from malloc

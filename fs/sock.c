@@ -343,7 +343,9 @@ static int netlink_build_links(struct netlink_builder *b, uint32_t seq) {
         if (start == SIZE_MAX) { err = _ENOMEM; break; }
         struct ifinfomsg_ *info = netlink_payload(b, start);
         info->family = 0;
-        info->type = (ifa->ifa_flags & IFF_LOOPBACK) ? ARPHRD_LOOPBACK_ : ARPHRD_ETHER_;
+        info->type = (ifa->ifa_flags & IFF_LOOPBACK) ? ARPHRD_LOOPBACK_ :
+                     (ifa->ifa_flags & IFF_POINTOPOINT) ? ARPHRD_NONE_ :
+                     ARPHRD_ETHER_;
         info->index = index;
         info->flags = netlink_linux_if_flags(ifa->ifa_flags);
         info->change = 0xffffffffu;
@@ -370,6 +372,14 @@ static int netlink_build_links(struct netlink_builder *b, uint32_t seq) {
         if (hwlen != 0) {
             err = netlink_add_attr(b, start, IFLA_ADDRESS_, hw, hwlen);
             if (err < 0) break;
+
+            if (ifa->ifa_flags & IFF_BROADCAST) {
+                uint8_t broadcast[32];
+                memset(broadcast, 0xff, hwlen);
+                err = netlink_add_attr(b, start, IFLA_BROADCAST_,
+                        broadcast, hwlen);
+                if (err < 0) break;
+            }
         }
 
         struct rtnl_link_stats_ stats;
