@@ -132,6 +132,12 @@ jobs:
           fi
           echo 'PASS: interface transmit-queue ioctl emits no compatibility warnings'
 
+          echo '=== procfs ARP compatibility ==='
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox cat /proc/net/arp >proc-net-arp.txt
+          grep -Fq 'IP address' proc-net-arp.txt
+          grep -Fq 'HW address' proc-net-arp.txt
+          echo 'PASS: /proc/net/arp exists as a valid empty Linux-style table'
+
       - name: Exercise legacy interface ioctl consumers
         timeout-minutes: 1
         run: |
