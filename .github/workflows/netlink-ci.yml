@@ -316,11 +316,18 @@ jobs:
             exit "$iflist_rc"
           fi
           grep -Fq 'lo' nmap-iflist.txt
+          grep -Fq '127.0.0.1/8' nmap-iflist.txt
+          grep -Fq '::1/128' nmap-iflist.txt
+          if grep -Fq 'ROUTES: NONE FOUND(!)' nmap-iflist.txt; then
+            echo 'FAIL: Nmap could enumerate interfaces but not connected routes'
+            exit 1
+          fi
+          grep -Fq '127.0.0.0/8' nmap-iflist.txt
           if grep -Eqi 'failed to open|cannot open|netlink.*error|socket_bindtodevice:' nmap-iflist.strace; then
             echo 'FAIL: Nmap interface discovery emitted a network compatibility error'
             exit 1
           fi
-          echo 'PASS: Nmap interface discovery completed with loopback visible'
+          echo 'PASS: Nmap discovers IPv4/IPv6 interfaces and connected routes'
 
           set +e
           timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -p 22,80,443 127.0.0.1 >nmap.txt 2>nmap.strace
