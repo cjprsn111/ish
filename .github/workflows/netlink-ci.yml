@@ -78,6 +78,8 @@ jobs:
             exit 1
           fi
           grep -Eq '(^|[[:space:]])lo:' ip-link.txt
+          grep -Eq ' mtu [1-9][0-9]* ' ip-link.txt
+          grep -Eq ' state (UP|DOWN|UNKNOWN)([[:space:]]|$)' ip-link.txt
           test -s ip-route.txt
           grep -Eq 'dev [^ ]+' ip-route.txt
           test -s ip-route-v4.txt
@@ -201,6 +203,8 @@ jobs:
           fi
           echo 'PASS: address dumps honor requested IPv4/IPv6 family'
           grep -Eq '(^|[[:space:]])lo:' iproute2-link-stats.txt
+          grep -Eq ' mtu [1-9][0-9]* ' iproute2-link-stats.txt
+          grep -Eq ' state (UP|DOWN|UNKNOWN)([[:space:]]|$)' iproute2-link-stats.txt
           grep -Fq 'RX: bytes' iproute2-link-stats.txt
           grep -Fq 'TX: bytes' iproute2-link-stats.txt
           if grep -Eq '(^|[[:space:]])if[0-9]+:' iproute2-link-stats.txt; then
