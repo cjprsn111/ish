@@ -6,6 +6,7 @@
 #include "kernel/errno.h"
 
 static struct mount adhoc_mount;
+extern const struct fd_ops socket_fdops;
 
 struct fd *adhoc_fd_create(const struct fd_ops *ops) {
     struct fd *fd = fd_create(ops);
@@ -40,6 +41,11 @@ static int adhoc_fsetattr(struct fd *fd, struct attr attr) {
 }
 
 static int adhoc_getpath(struct fd *fd, char *buf) {
+    if (fd->ops == &socket_fdops && fd->stat.inode != 0) {
+        sprintf(buf, "socket:[%lu]", (unsigned long) fd->stat.inode);
+        return 0;
+    }
+
     const char *type = "unknown"; // TODO allow this to be customized
     if (fd->stat.inode == 0)
         sprintf(buf, "anon_inode:[%s]", type);
