@@ -757,6 +757,15 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
             }
             break;
         }
+        case RTM_GETNEIGH_:
+            // iOS does not provide a stable public ARP/NDP table API for apps.
+            // Return a valid empty multipart dump rather than making common
+            // Linux tools fail. Point lookups remain explicitly unsupported.
+            if ((request->flags & NLM_F_DUMP_) != 0)
+                err = netlink_add_done(&b, request->seq);
+            else
+                err = _EOPNOTSUPP;
+            break;
         default:
             err = _EOPNOTSUPP;
             break;

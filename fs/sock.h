@@ -73,6 +73,8 @@ struct nlmsghdr_ {
 #define RTM_GETADDR_ 22
 #define RTM_NEWROUTE_ 24
 #define RTM_GETROUTE_ 26
+#define RTM_NEWNEIGH_ 28
+#define RTM_GETNEIGH_ 30
 
 struct ifinfomsg_ {
     uint8_t family;
