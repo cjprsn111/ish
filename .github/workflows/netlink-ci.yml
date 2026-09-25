@@ -201,6 +201,8 @@ jobs:
           fi
           echo 'PASS: address dumps honor requested IPv4/IPv6 family'
           grep -Eq '(^|[[:space:]])lo:' iproute2-link-stats.txt
+          grep -Fq 'RX: bytes' iproute2-link-stats.txt
+          grep -Fq 'TX: bytes' iproute2-link-stats.txt
           if grep -Eq '(^|[[:space:]])if[0-9]+:' iproute2-link-stats.txt; then
             echo 'FAIL: iproute2 -s link fell back to numeric interface names'
             exit 1
