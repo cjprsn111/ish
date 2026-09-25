@@ -378,6 +378,23 @@ jobs:
           fi
           echo 'PASS: /proc/net/tcp exposes guest listeners and ss can fall back to it'
 
+          timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
+            /bin/busybox syslogd -n -O /tmp/cj-syslog.log >/dev/null 2>&1 &
+            logger_pid=$!
+            sleep 1
+            cat /proc/net/unix
+            ss -xl
+            kill "$logger_pid"
+          ' >ss-unix.txt 2>ss-unix.strace
+
+          cat ss-unix.txt
+          grep -Fq '/dev/log' ss-unix.txt
+          if grep -Eqi 'cannot open /proc/net/unix|No such file or directory' ss-unix.strace; then
+            echo 'FAIL: ss fallback could not read /proc/net/unix'
+            exit 1
+          fi
+          echo 'PASS: /proc/net/unix exposes guest Unix listeners and ss can fall back to it'
+
       - name: Stress repeated iproute2 NETLINK_ROUTE requests
         timeout-minutes: 2
         run: |
