@@ -350,8 +350,8 @@ jobs:
           grep -Eq '(^|[[:space:]])lo:' iproute2-link-stats.txt
           grep -Eq ' mtu [1-9][0-9]* ' iproute2-link-stats.txt
           grep -Eq ' state (UP|DOWN|UNKNOWN)([[:space:]]|$)' iproute2-link-stats.txt
-          grep -Fq 'RX: bytes' iproute2-link-stats.txt
-          grep -Fq 'TX: bytes' iproute2-link-stats.txt
+          grep -Eq 'RX:[[:space:]]+bytes' iproute2-link-stats.txt
+          grep -Eq 'TX:[[:space:]]+bytes' iproute2-link-stats.txt
           if grep -Eq '(^|[[:space:]])if[0-9]+:' iproute2-link-stats.txt; then
             echo 'FAIL: iproute2 -s link fell back to numeric interface names'
             exit 1
