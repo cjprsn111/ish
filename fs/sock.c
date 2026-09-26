@@ -1007,6 +1007,7 @@ static fd_t sock_fd_create(int sock_fd, int domain, int type, int protocol) {
     fd->socket.domain = domain;
     fd->socket.type = type & SOCKET_TYPE_MASK;
     fd->socket.protocol = protocol;
+    fd->socket.listening = 0;
     if (domain == AF_LOCAL_) {
         cond_init(&fd->socket.unix_got_peer);
         list_init(&fd->socket.unix_scm);
@@ -1421,6 +1422,7 @@ int_t sys_listen(fd_t sock_fd, int_t backlog) {
     int err = listen(sock->real_fd, backlog);
     if (err < 0)
         return errno_map();
+    sock->socket.listening = 1;
     sockrestart_begin_listen(sock);
     return err;
 }

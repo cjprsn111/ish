@@ -407,6 +407,7 @@ jobs:
 
           cat ss-listen.txt
           grep -Fq ':23456' ss-listen.txt
+          grep -Eq '^LISTEN[[:space:]]' ss-listen.txt
           grep -Fq 'users:(' ss-listen.txt
           if grep -Eqi 'cannot open /proc/net/tcp|No such file or directory' ss-listen.strace; then
             echo 'FAIL: ss fallback could not read /proc/net/tcp'

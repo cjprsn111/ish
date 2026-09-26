@@ -498,6 +498,12 @@ static void proc_format_inet_addr(const struct sockaddr_storage *ss,
 }
 
 static unsigned proc_tcp_state(struct fd *fd) {
+    // Track Linux listen() state explicitly. Darwin's SO_ACCEPTCONN result is
+    // not reliable enough for all sockets exposed through the iSH guest, and
+    // an incorrect state makes ss report a TCP listener as UNCONN.
+    if (fd->socket.listening)
+        return 0x0a; // TCP_LISTEN
+
     int accepting = 0;
     socklen_t accepting_len = sizeof(accepting);
     if (getsockopt(fd->real_fd, SOL_SOCKET, SO_ACCEPTCONN,
@@ -712,8 +718,9 @@ static int proc_show_net_unix(struct proc_entry *UNUSED(entry),
 
         int accepting = 0;
         socklen_t accepting_len = sizeof(accepting);
-        int is_listener = getsockopt(fd->real_fd, SOL_SOCKET, SO_ACCEPTCONN,
-                &accepting, &accepting_len) == 0 && accepting;
+        int is_listener = fd->socket.listening ||
+            (getsockopt(fd->real_fd, SOL_SOCKET, SO_ACCEPTCONN,
+                &accepting, &accepting_len) == 0 && accepting);
 
         struct sockaddr_storage peer = {};
         socklen_t peer_len = sizeof(peer);

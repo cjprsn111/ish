@@ -43,8 +43,9 @@ struct fd {
             int domain;
             int type;
             int protocol;
+            int listening;
 
-            // State for virtual Linux NETLINK_ROUTE sockets.
+            // State for virtual Linux Netlink sockets.
             uint32_t netlink_pid;
             uint32_t netlink_groups;
             uint32_t netlink_seq;
