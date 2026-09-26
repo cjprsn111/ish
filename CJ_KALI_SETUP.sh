@@ -48,56 +48,76 @@ if [ "$update_ok" -ne 1 ]; then
   echo "Continuing with any usable cached indexes; package installation will be retried."
 fi
 
-install_toolkit() {
-  apk add \
-  bash \
+install_group() {
+  group_name="$1"
+  shift
+
+  attempt=1
+  while [ "$attempt" -le 3 ]; do
+    echo "Installing $group_name (attempt $attempt/3)..."
+    if apk add "$@"; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -le 3 ]; then
+      echo "$group_name was incomplete; retrying in 3 seconds..."
+      sleep 3
+    fi
+  done
+
+  echo "Failed to install $group_name after 3 attempts." >&2
+  return 1
+}
+
+install_group "network toolkit" \
   bind-tools \
-  coreutils \
   curl \
-  findutils \
-  gawk \
-  git \
-  grep \
   iproute2 \
   iproute2-ss \
-  jq \
-  less \
-  nano \
   netcat-openbsd \
   nmap \
   nmap-scripts \
   openssh-client \
   openssl \
+  wget
+
+install_group "shell and scripting toolkit" \
+  bash \
+  coreutils \
+  findutils \
+  gawk \
+  git \
+  grep \
+  jq \
+  less \
+  nano \
   procps \
   py3-pip \
   python3 \
   sed \
-  vim \
-  wget
-}
-
-install_ok=0
-for attempt in 1 2 3; do
-  echo "Installing CJ Kali-like toolkit (attempt $attempt/3)..."
-  if install_toolkit; then
-    install_ok=1
-    break
-  fi
-  echo "Package installation was incomplete; retrying in 3 seconds..."
-  sleep 3
-done
-
-if [ "$install_ok" -ne 1 ]; then
-  echo "CJ Kali-like toolkit installation did not complete after 3 attempts." >&2
-  echo "Run cj-kali-setup again when the network is stable." >&2
-  exit 1
-fi
+  vim
 
 if [ -x /usr/bin/cj-nmap-wrapper ]; then
   mkdir -p /usr/local/bin
   cp /usr/bin/cj-nmap-wrapper /usr/local/bin/nmap
   chmod 0755 /usr/local/bin/nmap
   echo "Installed CJ-Netlink Nmap compatibility wrapper."
+fi
+
+missing=0
+for tool in nmap ip ss ssh python3 git curl wget nc openssl; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "Missing required command after setup: $tool" >&2
+    missing=1
+  fi
+done
+if [ ! -f /usr/share/nmap/nse_main.lua ]; then
+  echo "Missing Nmap NSE runtime: /usr/share/nmap/nse_main.lua" >&2
+  missing=1
+fi
+if [ "$missing" -ne 0 ]; then
+  echo "Setup is incomplete. Run cj-kali-setup again when the network is stable." >&2
+  exit 1
 fi
 
 echo

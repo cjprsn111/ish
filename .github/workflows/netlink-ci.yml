@@ -276,6 +276,9 @@ jobs:
           sh -n CJ_KALI_SETUP.sh
           sh -n CJ_KALI_STATUS.sh
           sh -n CJ_NMAP_WRAPPER.sh
+          grep -Fq 'Installing network toolkit' CJ_KALI_SETUP.sh
+          grep -Fq 'Installing shell and scripting toolkit' CJ_KALI_SETUP.sh
+          grep -Fq 'Missing Nmap NSE runtime' CJ_KALI_SETUP.sh
 
           ./build/ish -f netlink-rootfs /bin/sh -c '
             mkdir -p /usr/local/bin
