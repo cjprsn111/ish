@@ -32,9 +32,24 @@ if [ -f "$repo_file" ] && grep -q 'apk\.ish\.app' "$repo_file"; then
   echo "Using official Alpine v${alpine_minor} repositories."
 fi
 
-apk update
+update_ok=0
+for attempt in 1 2 3; do
+  echo "Refreshing Alpine indexes (attempt $attempt/3)..."
+  if apk update; then
+    update_ok=1
+    break
+  fi
+  echo "Repository refresh was incomplete; retrying in 2 seconds..."
+  sleep 2
+done
 
-apk add --no-cache \
+if [ "$update_ok" -ne 1 ]; then
+  echo "WARNING: repository refresh did not fully succeed."
+  echo "Continuing with any usable cached indexes; package installation will be retried."
+fi
+
+install_toolkit() {
+  apk add \
   bash \
   bind-tools \
   coreutils \
@@ -44,6 +59,7 @@ apk add --no-cache \
   git \
   grep \
   iproute2 \
+  iproute2-ss \
   jq \
   less \
   nano \
@@ -58,6 +74,24 @@ apk add --no-cache \
   sed \
   vim \
   wget
+}
+
+install_ok=0
+for attempt in 1 2 3; do
+  echo "Installing CJ Kali-like toolkit (attempt $attempt/3)..."
+  if install_toolkit; then
+    install_ok=1
+    break
+  fi
+  echo "Package installation was incomplete; retrying in 3 seconds..."
+  sleep 3
+done
+
+if [ "$install_ok" -ne 1 ]; then
+  echo "CJ Kali-like toolkit installation did not complete after 3 attempts." >&2
+  echo "Run cj-kali-setup again when the network is stable." >&2
+  exit 1
+fi
 
 echo
 echo "CJ Kali-like userspace toolkit installed."
