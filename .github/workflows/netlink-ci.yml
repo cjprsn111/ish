@@ -412,7 +412,11 @@ jobs:
             echo 'FAIL: ss fallback could not read /proc/net/tcp'
             exit 1
           fi
-          echo 'PASS: /proc/net/tcp exposes guest listeners and ss maps sockets back to guest processes'
+          if grep -Fqi 'Cannot open netlink socket' ss-listen.strace; then
+            echo 'FAIL: ss emitted a NETLINK_SOCK_DIAG open warning'
+            exit 1
+          fi
+          echo 'PASS: ss falls back cleanly from sock_diag and maps sockets back to guest processes'
 
           timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
             /bin/busybox nc -u -l -p 23457 -w 2 >/dev/null 2>&1 &
