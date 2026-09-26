@@ -33,10 +33,20 @@ jobs:
           ninja -C build
 
       - name: Prepare Alpine x86 rootfs
+        timeout-minutes: 4
         run: |
-          # Match the real iPhone test environment so iproute2/Nmap/procfs
-          # behavior is exercised against the same Alpine generation.
-          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86/alpine-minirootfs-3.19.9-x86.tar.gz -O alpine.tar.gz
+          set -euo pipefail
+
+          # Build the exact x86 Alpine 3.19 userspace on the host, where
+          # package networking is reliable, then hand the finished filesystem
+          # to iSH. This keeps the guest tests focused on iSH networking
+          # semantics instead of the hosted runner's restrictions on sockets
+          # opened by the emulator.
+          cid="$(docker create --platform linux/386 alpine:3.19 /bin/sh -c \
+            'apk add --no-cache nmap nmap-scripts iproute2')"
+          docker start -a "$cid"
+          docker export "$cid" | gzip -1 > alpine.tar.gz
+          docker rm "$cid"
           ./build/tools/fakefsify alpine.tar.gz netlink-rootfs
 
       - name: Exercise Alpine 3.19 built-in network tools
@@ -250,25 +260,13 @@ jobs:
             timeout 10s ./build/ish -f netlink-rootfs /bin/busybox ip -6 route get ::1 >/dev/null
           done
 
-      - name: Install network tools in guest
-        timeout-minutes: 4
+      - name: Verify network tools in guest
         run: |
-          set -euxo pipefail
-          grep -E '^nameserver' /etc/resolv.conf | head -1 | ./build/ish -f netlink-rootfs /bin/sed -n 'w /etc/resolv.conf'
-
-          # The hosted Linux runner can deny TLS sockets created through the
-          # emulator even though the same HTTPS repositories work on iOS.
-          # Use Alpine's signed HTTP mirror only for CI package acquisition;
-          # the real-device setup helper continues to use HTTPS.
-          ./build/ish -f netlink-rootfs /bin/sh -c '
-            printf "%s\n" \
-              "http://dl-cdn.alpinelinux.org/alpine/v3.19/main" \
-              "http://dl-cdn.alpinelinux.org/alpine/v3.19/community" \
-              > /etc/apk/repositories
-          '
-          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap nmap-scripts iproute2
+          set -euo pipefail
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/ip -V
+          timeout 20s ./build/ish -f netlink-rootfs /usr/bin/nmap --version
           timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c 'test -f /usr/share/nmap/nse_main.lua'
-          echo 'PASS: Nmap NSE script data is installed'
+          echo 'PASS: Alpine 3.19 iproute2, Nmap, and NSE data are pre-provisioned'
 
       - name: Exercise CJ Nmap default inside guest
         timeout-minutes: 2
