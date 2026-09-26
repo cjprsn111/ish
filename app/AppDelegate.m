@@ -168,7 +168,7 @@ void SyncHostname(void) {
 - (void)installCJToolsHelper {
 #if !ISH_LINUX
     struct {
-        NSString *resource;
+        __unsafe_unretained NSString *resource;
         const char *path;
     } helpers[] = {
         {@"CJ_KALI_SETUP", "/usr/bin/cj-kali-setup"},
