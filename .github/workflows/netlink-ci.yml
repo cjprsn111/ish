@@ -255,6 +255,17 @@ jobs:
         run: |
           set -euxo pipefail
           grep -E '^nameserver' /etc/resolv.conf | head -1 | ./build/ish -f netlink-rootfs /bin/sed -n 'w /etc/resolv.conf'
+
+          # The hosted Linux runner can deny TLS sockets created through the
+          # emulator even though the same HTTPS repositories work on iOS.
+          # Use Alpine's signed HTTP mirror only for CI package acquisition;
+          # the real-device setup helper continues to use HTTPS.
+          ./build/ish -f netlink-rootfs /bin/sh -c '
+            printf "%s\n" \
+              "http://dl-cdn.alpinelinux.org/alpine/v3.19/main" \
+              "http://dl-cdn.alpinelinux.org/alpine/v3.19/community" \
+              > /etc/apk/repositories
+          '
           timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap nmap-scripts iproute2
           timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c 'test -f /usr/share/nmap/nse_main.lua'
           echo 'PASS: Nmap NSE script data is installed'
