@@ -93,6 +93,13 @@ if [ "$install_ok" -ne 1 ]; then
   exit 1
 fi
 
+if [ -x /usr/bin/cj-nmap-wrapper ]; then
+  mkdir -p /usr/local/bin
+  cp /usr/bin/cj-nmap-wrapper /usr/local/bin/nmap
+  chmod 0755 /usr/local/bin/nmap
+  echo "Installed CJ-Netlink Nmap compatibility wrapper."
+fi
+
 echo
 echo "CJ Kali-like userspace toolkit installed."
 echo "Network/kernel features are still limited by the iOS sandbox."

@@ -173,6 +173,7 @@ void SyncHostname(void) {
     } helpers[] = {
         {@"CJ_KALI_SETUP", "/usr/bin/cj-kali-setup"},
         {@"CJ_KALI_STATUS", "/usr/bin/cj-kali-status"},
+        {@"CJ_NMAP_WRAPPER", "/usr/bin/cj-nmap-wrapper"},
     };
 
     current = pid_get_task(1);

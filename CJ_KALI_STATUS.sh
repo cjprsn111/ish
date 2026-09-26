@@ -50,6 +50,14 @@ else
 fi
 echo
 
+echo "[Nmap mode]"
+if [ "$(command -v nmap 2>/dev/null || true)" = "/usr/local/bin/nmap" ] && [ -x /usr/bin/cj-nmap-wrapper ]; then
+  echo "CJ-Netlink connect-scan default wrapper active"
+else
+  echo "system Nmap command active"
+fi
+echo
+
 echo "[tooling]"
 for tool in nmap ip ss ssh python3 git curl wget nc openssl; do
   if command -v "$tool" >/dev/null 2>&1; then

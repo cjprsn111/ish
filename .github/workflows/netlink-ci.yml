@@ -67,6 +67,39 @@ jobs:
 
           echo 'PASS: Alpine 3.19 built-in networking and procfs socket tables are compatible'
 
+      - name: Validate iOS-safe Nmap wrapper
+        run: |
+          set -euo pipefail
+          sh -n CJ_NMAP_WRAPPER.sh
+          cat > /tmp/cj-fake-nmap <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$*"
+          EOF
+          chmod +x /tmp/cj-fake-nmap
+
+          out="$(sudo env CJ_NMAP_REAL=/tmp/cj-fake-nmap ./CJ_NMAP_WRAPPER.sh -sV -sC -Pn 127.0.0.1)"
+          echo "$out"
+          case "$out" in
+            "-sT -sV -sC -Pn 127.0.0.1") ;;
+            *) echo 'FAIL: default root Nmap invocation did not fall back to TCP connect'; exit 1 ;;
+          esac
+
+          out="$(sudo env CJ_NMAP_REAL=/tmp/cj-fake-nmap ./CJ_NMAP_WRAPPER.sh -sS -Pn 127.0.0.1)"
+          echo "$out"
+          case "$out" in
+            "-sS -Pn 127.0.0.1") ;;
+            *) echo 'FAIL: explicit SYN scan was unexpectedly rewritten'; exit 1 ;;
+          esac
+
+          out="$(sudo env CJ_NMAP_REAL=/tmp/cj-fake-nmap ./CJ_NMAP_WRAPPER.sh --iflist)"
+          echo "$out"
+          case "$out" in
+            "--iflist") ;;
+            *) echo 'FAIL: Nmap information mode was unexpectedly rewritten'; exit 1 ;;
+          esac
+
+          echo 'PASS: CJ Nmap wrapper only changes the implicit root SYN default'
+
       - name: Exercise virtual NETLINK_ROUTE
         timeout-minutes: 4
         run: |

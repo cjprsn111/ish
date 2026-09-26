@@ -24,6 +24,7 @@ on:
       - 'IPHONE_TEST.md'
       - 'CJ_KALI_SETUP.sh'
       - 'CJ_KALI_STATUS.sh'
+      - 'CJ_NMAP_WRAPPER.sh'
 
 concurrency:
   group: cj-netlink-ios-candidate-${{ github.ref }}
@@ -60,7 +61,8 @@ jobs:
           test -n "$APP"
           cp CJ_KALI_SETUP.sh "$APP/CJ_KALI_SETUP.sh"
           cp CJ_KALI_STATUS.sh "$APP/CJ_KALI_STATUS.sh"
-          chmod 0644 "$APP/CJ_KALI_SETUP.sh" "$APP/CJ_KALI_STATUS.sh"
+          cp CJ_NMAP_WRAPPER.sh "$APP/CJ_NMAP_WRAPPER.sh"
+          chmod 0644 "$APP/CJ_KALI_SETUP.sh" "$APP/CJ_KALI_STATUS.sh" "$APP/CJ_NMAP_WRAPPER.sh"
 
       - name: Validate unsigned arm64 bundle
         run: |
@@ -75,6 +77,7 @@ jobs:
           test -f "$EXT"
           test -f "$APP/CJ_KALI_SETUP.sh"
           test -f "$APP/CJ_KALI_STATUS.sh"
+          test -f "$APP/CJ_NMAP_WRAPPER.sh"
 
           MAIN_ARCHS="$(xcrun lipo -archs "$MAIN")"
           EXT_ARCHS="$(xcrun lipo -archs "$EXT")"
@@ -131,5 +134,6 @@ jobs:
             IPHONE_TEST.md
             CJ_KALI_SETUP.sh
             CJ_KALI_STATUS.sh
+            CJ_NMAP_WRAPPER.sh
           if-no-files-found: error
           retention-days: 14

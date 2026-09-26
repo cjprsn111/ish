@@ -11,6 +11,7 @@ The GitHub Actions artifact must contain:
 - `CJ-Netlink-build-info.txt`
 - `CJ_KALI_SETUP.sh`
 - `CJ_KALI_STATUS.sh`
+- `CJ_NMAP_WRAPPER.sh`
 
 The workflow verifies that both the main iSH executable and the File Provider extension are arm64-only and that the app is unsigned. The IPA must be signed with a valid Apple development/distribution identity before iOS will install it.
 
@@ -76,7 +77,7 @@ nmap -sT -Pn -n -p 22,80,443 127.0.0.1
 
 `nmap -d --iflist` should enumerate the real iPhone interfaces instead of reporting `getinterfaces_dnet: intf_loop() failed`. It should also show connected routes and a host-selected default route when the host has one.
 
-The `nse_main.lua` check verifies that `-sC`/default NSE scripts are available instead of failing during script-engine initialization. The TCP-connect scan must complete without `socket_bindtodevice` compatibility errors. Port state depends on services and iOS policy on the installed device, so the key device-test requirement is that the scan completes normally and reports the host.
+The `nse_main.lua` check verifies that `-sC`/default NSE scripts are available instead of failing during script-engine initialization. After `cj-kali-setup`, CJ-Netlink installs an Nmap wrapper in `/usr/local/bin/nmap` that adds `-sT` only when root-mode Nmap would otherwise silently choose its raw SYN default. Explicit scan modes such as `-sS`, `-sU`, or `-sT` are left untouched. The TCP-connect scan must complete without `socket_bindtodevice` compatibility errors. Port state depends on services and iOS policy on the installed device, so the key device-test requirement is that the scan completes normally and reports the host.
 
 ## Real-device observations to capture
 
