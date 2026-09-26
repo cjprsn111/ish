@@ -77,6 +77,25 @@ for tool in nmap ip ss ssh python3 git curl wget nc openssl; do
 done
 echo
 
+extended_present=0
+for tool in socat tcpdump tmux tree lsof rsync strace mtr whois; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    extended_present=1
+    break
+  fi
+done
+if [ "$extended_present" -eq 1 ]; then
+  echo "[extended tooling]"
+  for tool in socat tcpdump tmux tree lsof rsync strace mtr whois; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      printf "%-9s %s\n" "$tool" "installed"
+    else
+      printf "%-9s %s\n" "$tool" "not installed"
+    fi
+  done
+  echo
+fi
+
 if [ "$full" -eq 1 ]; then
   echo "[interfaces]"
   if command -v ip >/dev/null 2>&1; then

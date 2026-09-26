@@ -278,7 +278,9 @@ jobs:
           sh -n CJ_NMAP_WRAPPER.sh
           grep -Fq 'install_group "network toolkit"' CJ_KALI_SETUP.sh
           grep -Fq 'install_group "shell and scripting toolkit"' CJ_KALI_SETUP.sh
+          grep -Fq 'install_group "extended Kali-like toolkit"' CJ_KALI_SETUP.sh
           grep -Fq 'Missing Nmap NSE runtime' CJ_KALI_SETUP.sh
+          sh CJ_KALI_SETUP.sh --help | grep -Fq -- '--extended'
 
           ./build/ish -f netlink-rootfs /bin/sh -c '
             mkdir -p /usr/local/bin

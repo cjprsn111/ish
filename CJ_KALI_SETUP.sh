@@ -1,6 +1,25 @@
 #!/bin/sh
 set -eu
 
+extended=0
+case "${1:-}" in
+  "")
+    ;;
+  -e|--extended)
+    extended=1
+    ;;
+  -h|--help)
+    echo "usage: cj-kali-setup [--extended]"
+    echo "  default     install the reliable core networking and scripting toolkit"
+    echo "  --extended  also install additional Kali-like user-space utilities"
+    exit 0
+    ;;
+  *)
+    echo "usage: cj-kali-setup [--extended]" >&2
+    exit 2
+    ;;
+esac
+
 if [ "$(id -u)" != "0" ]; then
   echo "CJ Kali setup must be run as root inside iSH." >&2
   exit 1
@@ -97,6 +116,20 @@ install_group "shell and scripting toolkit" \
   sed \
   vim
 
+if [ "$extended" -eq 1 ]; then
+  install_group "extended Kali-like toolkit" \
+    file \
+    lsof \
+    mtr \
+    rsync \
+    socat \
+    strace \
+    tcpdump \
+    tmux \
+    tree \
+    whois
+fi
+
 if [ -x /usr/bin/cj-nmap-wrapper ]; then
   mkdir -p /usr/local/bin
   cp /usr/bin/cj-nmap-wrapper /usr/local/bin/nmap
@@ -122,6 +155,10 @@ fi
 
 echo
 echo "CJ Kali-like userspace toolkit installed."
+if [ "$extended" -eq 1 ]; then
+  echo "Extended user-space utilities installed."
+  echo "Packet capture, raw ICMP, ptrace, and similar kernel-facing features may still be limited by iOS."
+fi
 echo "Network/kernel features are still limited by the iOS sandbox."
 echo
 printf 'ip:      '; ip -V 2>/dev/null || true

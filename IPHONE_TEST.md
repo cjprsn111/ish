@@ -34,6 +34,8 @@ cj-kali-setup
 
 The bootstrap installs iproute2, Nmap, the Nmap NSE script package, SSH, Git, Python, curl/wget, netcat, OpenSSL, and other common command-line tools. It also applies the official Alpine mirror workaround automatically when the bundled iSH repository is the active source.
 
+For a broader user-space toolkit, run `cj-kali-setup --extended`. That adds utilities such as socat, tcpdump, tmux, tree, lsof, rsync, strace, mtr, and whois. Installation does not bypass iOS restrictions: raw ICMP, packet capture, ptrace, and other kernel-facing operations can still be limited on a stock iPhone.
+
 Then run:
 
 ```sh
