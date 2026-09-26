@@ -439,7 +439,7 @@ jobs:
             listener=$!
             sleep 1
             cat /proc/net/tcp
-            /bin/busybox timeout 10 ss -ltnp
+            /bin/busybox timeout 10 /sbin/ss -ltnp
             ss_rc=$?
             wait "$listener" 2>/dev/null || true
             exit "$ss_rc"
@@ -471,7 +471,7 @@ jobs:
             udp_listener=$!
             sleep 1
             cat /proc/net/udp
-            ss -lun
+            /sbin/ss -lun
             wait "$udp_listener" 2>/dev/null || true
             exit 0
           ' >ss-udp.txt 2>ss-udp.strace
@@ -485,12 +485,11 @@ jobs:
           echo 'PASS: /proc/net/udp exposes guest UDP sockets and ss can fall back to it'
 
           timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
-            /bin/busybox syslogd -n -O /tmp/cj-syslog.log >/dev/null 2>&1 &
+            /bin/busybox timeout 5 /bin/busybox syslogd -n -O /tmp/cj-syslog.log >/dev/null 2>&1 &
             logger_pid=$!
             sleep 1
             cat /proc/net/unix
-            ss -xl
-            kill "$logger_pid" 2>/dev/null || true
+            /sbin/ss -xl
             wait "$logger_pid" 2>/dev/null || true
             exit 0
           ' >ss-unix.txt 2>ss-unix.strace
@@ -506,7 +505,7 @@ jobs:
           timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c '
             cat /proc/net/raw
             cat /proc/net/raw6
-            ss -wn
+            /sbin/ss -wn
           ' >ss-raw.txt 2>ss-raw.strace
           if grep -Eqi 'cannot open /proc/net/raw|No such file or directory' ss-raw.strace; then
             echo 'FAIL: ss fallback could not read raw socket procfs tables'
@@ -518,7 +517,7 @@ jobs:
             cat /proc/net/sockstat
             cat /proc/net/sockstat6
             cat /proc/net/snmp
-            ss -s
+            /sbin/ss -s
           ' >ss-summary.txt 2>ss-summary.strace
           cat ss-summary.txt
           grep -Fq 'Total:' ss-summary.txt
