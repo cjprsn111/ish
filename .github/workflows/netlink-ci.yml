@@ -286,11 +286,19 @@ jobs:
             chmod 0755 /usr/local/bin/nmap
           ' < CJ_NMAP_WRAPPER.sh
 
+          set +e
           timeout 30s ./build/ish -f netlink-rootfs /usr/local/bin/nmap \
             -sV -sC -Pn -n -p 80,443 127.0.0.1 \
             >nmap-default-connect.txt 2>nmap-default-connect.strace
+          nmap_rc=$?
+          set -e
 
-          cat nmap-default-connect.txt
+          cat nmap-default-connect.txt || true
+          tail -n 200 nmap-default-connect.strace || true
+          if [ "$nmap_rc" -ne 0 ]; then
+            echo "FAIL: wrapped Nmap exited with status $nmap_rc"
+            exit "$nmap_rc"
+          fi
           grep -Fq 'Nmap done:' nmap-default-connect.txt
           if grep -Eqi 'Failed to convert source address|Address family not supported|NSE: failed to initialize' \
               nmap-default-connect.txt nmap-default-connect.strace; then
