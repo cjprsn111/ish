@@ -79,6 +79,18 @@ nmap -sT -Pn -n -p 22,80,443 127.0.0.1
 
 The `nse_main.lua` check verifies that `-sC`/default NSE scripts are available instead of failing during script-engine initialization. After `cj-kali-setup`, CJ-Netlink installs an Nmap wrapper in `/usr/local/bin/nmap` that adds `-sT` only when root-mode Nmap would otherwise silently choose its raw SYN default. Explicit scan modes such as `-sS`, `-sU`, or `-sT` are left untouched. The TCP-connect scan must complete without `socket_bindtodevice` compatibility errors. Port state depends on services and iOS policy on the installed device, so the key device-test requirement is that the scan completes normally and reports the host.
 
+## Validated cellular checkpoint
+
+Validated on a non-jailbroken iPhone over cellular/5G:
+
+- `ip route get 1.1.1.1` selects the active `pdp_ip0` cellular interface and a matching real source address.
+- IPv4 and IPv6 default routes are exposed through the host-selected active interface without inventing gateway data.
+- `nmap --iflist` enumerates the real iOS interfaces and sees the host-selected default route.
+- `nmap -sT -sV -sC -Pn -n -p 22,80,443 127.0.0.1` completes successfully, confirming TCP-connect scanning, service detection, and NSE script loading together.
+- `ss -ltnp` maps a guest BusyBox listener back to its guest PID and file descriptor through the CJ-Netlink procfs socket tables.
+
+The next candidate also removes the noisy `NETLINK_SOCK_DIAG` open warning, reports TCP listeners as `LISTEN`, and installs the CJ Nmap wrapper so commands that would otherwise silently choose root-mode SYN scanning default to `-sT` on stock iOS.
+
 ## Real-device observations to capture
 
 Record:
