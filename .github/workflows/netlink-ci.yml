@@ -397,16 +397,26 @@ jobs:
         run: |
           set -euo pipefail
 
+          set +e
           timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
-            /bin/busybox nc -l -p 23456 >/dev/null 2>&1 &
+            /bin/busybox nc -l -p 23456 -w 5 >/dev/null 2>&1 &
             listener=$!
             sleep 1
             cat /proc/net/tcp
-            ss -ltnp
-            kill "$listener"
+            /bin/busybox timeout 10 ss -ltnp
+            ss_rc=$?
+            wait "$listener" 2>/dev/null || true
+            exit "$ss_rc"
           ' >ss-listen.txt 2>ss-listen.strace
+          ss_rc=$?
+          set -e
 
           cat ss-listen.txt
+          if [ "$ss_rc" -ne 0 ]; then
+            echo "FAIL: ss listener test exited with status $ss_rc"
+            cat ss-listen.strace
+            exit 1
+          fi
           grep -Fq ':23456' ss-listen.txt
           grep -Eq '^LISTEN[[:space:]]' ss-listen.txt
           grep -Fq 'users:(' ss-listen.txt
