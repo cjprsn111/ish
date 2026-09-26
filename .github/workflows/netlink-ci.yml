@@ -222,7 +222,9 @@ jobs:
         run: |
           set -euxo pipefail
           grep -E '^nameserver' /etc/resolv.conf | head -1 | ./build/ish -f netlink-rootfs /bin/sed -n 'w /etc/resolv.conf'
-          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap iproute2
+          timeout 180s ./build/ish -f netlink-rootfs /sbin/apk add --no-cache nmap nmap-scripts iproute2
+          timeout 20s ./build/ish -f netlink-rootfs /bin/sh -c 'test -f /usr/share/nmap/nse_main.lua'
+          echo 'PASS: Nmap NSE script data is installed'
 
       - name: Exercise iproute2 NETLINK_ROUTE
         timeout-minutes: 2
