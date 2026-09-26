@@ -34,28 +34,27 @@ jobs:
 
       - name: Prepare Alpine x86 rootfs
         run: |
-          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.14/releases/x86/alpine-minirootfs-3.14.3-x86.tar.gz -O alpine.tar.gz
+          # Match the real iPhone test environment so iproute2/Nmap/procfs
+          # behavior is exercised against the same Alpine generation.
+          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86/alpine-minirootfs-3.19.9-x86.tar.gz -O alpine.tar.gz
           ./build/tools/fakefsify alpine.tar.gz netlink-rootfs
-
-          wget -q https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86/alpine-minirootfs-3.19.9-x86.tar.gz -O alpine319.tar.gz
-          ./build/tools/fakefsify alpine319.tar.gz alpine319-rootfs
 
       - name: Exercise Alpine 3.19 built-in network tools
         timeout-minutes: 2
         run: |
           set -euo pipefail
 
-          timeout 20s ./build/ish -f alpine319-rootfs /bin/busybox ip addr >alpine319-ip-addr.txt
-          timeout 20s ./build/ish -f alpine319-rootfs /bin/busybox ip route >alpine319-ip-route.txt
-          timeout 20s ./build/ish -f alpine319-rootfs /bin/busybox ifconfig -a >alpine319-ifconfig.txt
-          timeout 20s ./build/ish -f alpine319-rootfs /bin/busybox netstat -rn >alpine319-netstat-route.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip addr >alpine319-ip-addr.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ip route >alpine319-ip-route.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox ifconfig -a >alpine319-ifconfig.txt
+          timeout 20s ./build/ish -f netlink-rootfs /bin/busybox netstat -rn >alpine319-netstat-route.txt
 
           grep -Fq '127.0.0.1/8' alpine319-ip-addr.txt
           grep -Eq '^default([[:space:]]|$)' alpine319-ip-route.txt
           grep -Fq '127.0.0.1' alpine319-ifconfig.txt
           grep -Fq '127.0.0.0' alpine319-netstat-route.txt
 
-          timeout 30s ./build/ish -f alpine319-rootfs /bin/sh -c '
+          timeout 30s ./build/ish -f netlink-rootfs /bin/sh -c '
             /bin/busybox nc -l -p 23456 >/dev/null 2>&1 &
             listener=$!
             sleep 1
