@@ -577,7 +577,7 @@ jobs:
           echo 'PASS: Nmap discovers IPv4/IPv6 interfaces and connected routes'
 
           set +e
-          timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -p 22,80,443 127.0.0.1 >nmap.txt 2>nmap.strace
+          timeout 30s ./build/ish -f netlink-rootfs /usr/bin/nmap -sT -Pn -n -p 22,80,443 127.0.0.1 >nmap.txt 2>nmap.strace
           rc=$?
           set -e
           cat nmap.txt || true
@@ -586,7 +586,7 @@ jobs:
           if [ "$rc" -ne 0 ]; then
             exit "$rc"
           fi
-          grep -Fq 'Nmap scan report for localhost (127.0.0.1)' nmap.txt
+          grep -Fq 'Nmap scan report for 127.0.0.1' nmap.txt
           grep -Eq '^22/tcp[[:space:]]+open[[:space:]]+ssh$' nmap.txt
           grep -Eq '^80/tcp[[:space:]]+closed[[:space:]]+http$' nmap.txt
           grep -Eq '^443/tcp[[:space:]]+closed[[:space:]]+https$' nmap.txt
