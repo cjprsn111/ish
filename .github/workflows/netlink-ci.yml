@@ -385,7 +385,7 @@ jobs:
             sleep 1
             cat /proc/net/udp
             ss -lun
-            printf "done\n" | /bin/busybox nc -u -w 1 127.0.0.1 23457 >/dev/null 2>&1 || true
+            kill "$udp_listener" 2>/dev/null || true
             wait "$udp_listener" 2>/dev/null || true
             exit 0
           ' >ss-udp.txt 2>ss-udp.strace
