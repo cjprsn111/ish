@@ -167,25 +167,46 @@ void SyncHostname(void) {
 
 - (void)installCJToolsHelper {
 #if !ISH_LINUX
-    NSURL *helperURL = [NSBundle.mainBundle URLForResource:@"CJ_KALI_SETUP"
-                                             withExtension:@"sh"];
-    if (helperURL == nil)
-        return;
-
-    NSData *helper = [NSData dataWithContentsOfURL:helperURL];
-    if (helper == nil)
-        return;
+    struct {
+        NSString *resource;
+        const char *path;
+    } helpers[] = {
+        {@"CJ_KALI_SETUP", "/usr/bin/cj-kali-setup"},
+        {@"CJ_KALI_STATUS", "/usr/bin/cj-kali-status"},
+    };
 
     current = pid_get_task(1);
-    struct fd *fd = generic_open("/usr/bin/cj-kali-setup",
-            O_WRONLY_ | O_CREAT_ | O_TRUNC_, 0755);
-    if (IS_ERR(fd))
-        return;
+    for (size_t i = 0; i < sizeof(helpers) / sizeof(helpers[0]); i++) {
+        NSURL *helperURL = [NSBundle.mainBundle URLForResource:helpers[i].resource
+                                                 withExtension:@"sh"];
+        if (helperURL == nil)
+            continue;
 
-    fd->ops->write(fd, helper.bytes, helper.length);
-    fd_close(fd);
-    generic_setattrat(AT_PWD, "/usr/bin/cj-kali-setup",
-            (struct attr) {.type = attr_mode, .mode = 0755}, false);
+        NSData *helper = [NSData dataWithContentsOfURL:helperURL];
+        if (helper == nil)
+            continue;
+
+        struct fd *fd = generic_open(helpers[i].path,
+                O_WRONLY_ | O_CREAT_ | O_TRUNC_, 0755);
+        if (IS_ERR(fd))
+            continue;
+
+        const uint8_t *bytes = helper.bytes;
+        size_t remaining = helper.length;
+        while (remaining != 0) {
+            ssize_t written = fd->ops->write(fd, bytes, remaining);
+            if (written <= 0)
+                break;
+            bytes += written;
+            remaining -= (size_t) written;
+        }
+        fd_close(fd);
+
+        if (remaining == 0) {
+            generic_setattrat(AT_PWD, helpers[i].path,
+                    (struct attr) {.type = attr_mode, .mode = 0755}, false);
+        }
+    }
 #endif
 }
 
