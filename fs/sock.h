@@ -214,6 +214,7 @@ struct scm {
 #define AF_NETLINK_ PF_NETLINK_
 
 #define NETLINK_ROUTE_ 0
+#define NETLINK_SOCK_DIAG_ 4
 static inline int sock_family_to_real(int fake) {
     switch (fake) {
         case PF_LOCAL_: return PF_LOCAL;

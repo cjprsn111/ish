@@ -33,8 +33,15 @@ static lock_t peer_lock = LOCK_INITIALIZER;
 static lock_t socket_inode_lock = LOCK_INITIALIZER;
 static ino_t socket_inode_next = 0x100000;
 
+static int is_virtual_netlink(const struct fd *fd) {
+    return fd->socket.domain == AF_NETLINK_ &&
+        (fd->socket.protocol == NETLINK_ROUTE_ ||
+         fd->socket.protocol == NETLINK_SOCK_DIAG_);
+}
+
 static int is_netlink_route(const struct fd *fd) {
-    return fd->socket.domain == AF_NETLINK_ && fd->socket.protocol == NETLINK_ROUTE_;
+    return fd->socket.domain == AF_NETLINK_ &&
+        fd->socket.protocol == NETLINK_ROUTE_;
 }
 
 #define NL_ALIGN(n) (((n) + 3u) & ~3u)
@@ -899,6 +906,21 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
         return _EINVAL;
 
     struct netlink_builder b = {};
+
+    // ss first prefers NETLINK_SOCK_DIAG and falls back to /proc/net/* when
+    // the kernel reports that socket diagnostics are unsupported. iOS has no
+    // Linux sock_diag API, but CJ-Netlink already exposes Linux-compatible
+    // procfs socket tables. Let the diagnostic socket open normally and return
+    // EOPNOTSUPP as a Netlink protocol error so iproute2 falls back silently
+    // instead of printing "Cannot open netlink socket: Invalid argument".
+    if (fd->socket.protocol == NETLINK_SOCK_DIAG_) {
+        int build_err = netlink_add_error(&b, request, _EOPNOTSUPP);
+        if (build_err < 0)
+            return build_err;
+        fd->socket.netlink_seq = request->seq;
+        return netlink_commit_response(fd, &b);
+    }
+
     int err;
     switch (request->type) {
         case RTM_GETLINK_:
@@ -999,7 +1021,7 @@ int_t sys_socket(dword_t domain, dword_t type, dword_t protocol) {
     // iSH so Linux userspace can still use its normal Netlink API.
     if (domain == AF_NETLINK_) {
         int base_type = type & SOCKET_TYPE_MASK;
-        if (protocol != NETLINK_ROUTE_ ||
+        if ((protocol != NETLINK_ROUTE_ && protocol != NETLINK_SOCK_DIAG_) ||
                 (base_type != SOCK_RAW_ && base_type != SOCK_DGRAM_))
             return _EINVAL;
         return sock_fd_create(-1, domain, type, protocol);
@@ -1300,7 +1322,7 @@ int_t sys_bind(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
     if (sock == NULL)
         return _EBADF;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         if (sockaddr_len < sizeof(struct sockaddr_nl_))
             return _EINVAL;
         struct sockaddr_nl_ nl;
@@ -1356,7 +1378,7 @@ int_t sys_connect(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
     if (sock == NULL)
         return _EBADF;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         if (sockaddr_len < sizeof(struct sockaddr_nl_))
             return _EINVAL;
         struct sockaddr_nl_ nl;
@@ -1479,7 +1501,7 @@ int_t sys_getsockname(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_ad
     if (user_get(sockaddr_len_addr, sockaddr_len))
         return _EFAULT;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         struct sockaddr_nl_ nl = {
             .family = AF_NETLINK_,
             .pid = sock->socket.netlink_pid != 0 ? sock->socket.netlink_pid : current->pid,
@@ -1527,7 +1549,7 @@ int_t sys_getpeername(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_ad
     if (user_get(sockaddr_len_addr, sockaddr_len))
         return _EFAULT;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         struct sockaddr_nl_ nl = {.family = AF_NETLINK_, .pid = 0, .groups = 0};
         dword_t copy_len = sockaddr_len < sizeof(nl) ? sockaddr_len : sizeof(nl);
         if (user_write(sockaddr_addr, &nl, copy_len))
@@ -1608,7 +1630,7 @@ int_t sys_sendto(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags, a
     if (sock == NULL)
         return _EBADF;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         if (len > 1024 * 1024)
             return _EINVAL;
         void *request = malloc(len);
@@ -1657,7 +1679,7 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
     if (sock == NULL)
         return _EBADF;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         if (!sock->socket.netlink_pending || sock->socket.netlink_response == NULL)
             return _EAGAIN;
         size_t response_len = sock->socket.netlink_response_len;
@@ -1728,7 +1750,7 @@ int_t sys_shutdown(fd_t sock_fd, dword_t how) {
     struct fd *sock = sock_getfd(sock_fd);
     if (sock == NULL)
         return _EBADF;
-    if (is_netlink_route(sock))
+    if (is_virtual_netlink(sock))
         return 0;
     int err = shutdown(sock->real_fd, how);
     if (err < 0)
@@ -1747,7 +1769,7 @@ int_t sys_setsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
     if (user_read(value_addr, value, value_len))
         return _EFAULT;
 
-    if (is_netlink_route(sock))
+    if (is_virtual_netlink(sock))
         return 0;
 
     if (level == SOL_SOCKET_ && option == SO_BINDTODEVICE_) {
@@ -1854,7 +1876,7 @@ int_t sys_getsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
     } else if (level == SOL_SOCKET_ && option == SO_ERROR_) {
         if (value_len != sizeof(dword_t))
             return _EINVAL;
-        if (is_netlink_route(sock)) {
+        if (is_virtual_netlink(sock)) {
             *(dword_t *) value = 0;
         } else {
         int real_error;
@@ -1953,7 +1975,7 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     if (user_get(msghdr_addr, msg_fake))
         return _EFAULT;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         if (msg_fake.msg_iovlen == 0)
             return 0;
         struct iovec_ iov[msg_fake.msg_iovlen];
@@ -2129,7 +2151,7 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     if (user_get(msghdr_addr, msg_fake))
         return _EFAULT;
 
-    if (is_netlink_route(sock)) {
+    if (is_virtual_netlink(sock)) {
         if (!sock->socket.netlink_pending || sock->socket.netlink_response == NULL)
             return _EAGAIN;
         if (msg_fake.msg_iovlen == 0)
@@ -2325,7 +2347,7 @@ static void sock_translate_err(struct fd *fd, int *err) {
 }
 
 static ssize_t sock_read(struct fd *fd, void *buf, size_t size) {
-    if (is_netlink_route(fd))
+    if (is_virtual_netlink(fd))
         return netlink_take_response(fd, buf, size);
     int err = realfs_read(fd, buf, size);
     sock_translate_err(fd, &err);
@@ -2333,7 +2355,7 @@ static ssize_t sock_read(struct fd *fd, void *buf, size_t size) {
 }
 
 static ssize_t sock_write(struct fd *fd, const void *buf, size_t size) {
-    if (is_netlink_route(fd)) {
+    if (is_virtual_netlink(fd)) {
         int err = netlink_handle_request(fd, buf, size);
         return err < 0 ? err : (ssize_t) size;
     }
@@ -2343,19 +2365,19 @@ static ssize_t sock_write(struct fd *fd, const void *buf, size_t size) {
 }
 
 static int sock_poll(struct fd *fd) {
-    if (is_netlink_route(fd))
+    if (is_virtual_netlink(fd))
         return POLLOUT | (fd->socket.netlink_pending ? POLLIN : 0);
     return realfs_poll(fd);
 }
 
 static int sock_getflags(struct fd *fd) {
-    if (is_netlink_route(fd))
+    if (is_virtual_netlink(fd))
         return fd->flags;
     return realfs_getflags(fd);
 }
 
 static int sock_setflags(struct fd *fd, dword_t flags) {
-    if (is_netlink_route(fd)) {
+    if (is_virtual_netlink(fd)) {
         fd->flags = flags;
         return 0;
     }
@@ -2611,7 +2633,7 @@ out:
 }
 
 static int sock_close(struct fd *fd) {
-    if (is_netlink_route(fd)) {
+    if (is_virtual_netlink(fd)) {
         netlink_clear_response(fd);
         return 0;
     }
