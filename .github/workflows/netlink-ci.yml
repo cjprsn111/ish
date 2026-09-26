@@ -71,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           sh -n CJ_NMAP_WRAPPER.sh
+          chmod +x CJ_NMAP_WRAPPER.sh
           cat > /tmp/cj-fake-nmap <<'EOF'
           #!/bin/sh
           printf '%s\n' "$*"
