@@ -77,6 +77,8 @@ struct nlmsghdr_ {
 #define RTM_GETNEIGH_ 30
 #define RTM_NEWRULE_ 32
 #define RTM_GETRULE_ 34
+#define RTM_NEWQDISC_ 36
+#define RTM_GETQDISC_ 38
 
 struct ifinfomsg_ {
     uint8_t family;
