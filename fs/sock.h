@@ -83,6 +83,11 @@ struct nlmsghdr_ {
 #define RTM_GETTCLASS_ 42
 #define RTM_NEWTFILTER_ 44
 #define RTM_GETTFILTER_ 46
+#define RTM_NEWACTION_ 48
+#define RTM_GETACTION_ 50
+#define RTM_NEWPREFIX_ 52
+#define RTM_GETMULTICAST_ 58
+#define RTM_GETANYCAST_ 62
 
 struct ifinfomsg_ {
     uint8_t family;

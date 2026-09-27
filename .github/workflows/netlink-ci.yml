@@ -407,6 +407,7 @@ jobs:
           check_tc_dump qdisc qdisc
           check_tc_dump class class
           check_tc_dump filter filter
+          check_tc_dump action actions
 
           grep -Eq 'dev [^ ]+' iproute2-route.txt
           grep -Eq '^default([[:space:]]|$)' iproute2-route-v4.txt
