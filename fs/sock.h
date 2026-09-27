@@ -192,6 +192,7 @@ struct rtnl_link_stats_ {
 #define RT_SCOPE_LINK_ 253
 #define RT_SCOPE_HOST_ 254
 #define RTN_UNICAST_ 1
+#define RTN_LOCAL_ 2
 #define RTN_UNREACHABLE_ 7
 
 #define ARPHRD_ETHER_ 1

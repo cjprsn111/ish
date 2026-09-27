@@ -809,10 +809,12 @@ static int netlink_build_route_query(struct netlink_builder *b,
     struct rtmsg_ *route = netlink_payload(b, start);
     route->family = req->family;
     route->dst_len = req->dst_len;
-    route->table = RT_TABLE_MAIN_;
-    route->protocol = RTPROT_BOOT_;
-    route->scope = RT_SCOPE_UNIVERSE_;
-    route->type = probe < 0 ? RTN_UNREACHABLE_ : RTN_UNICAST_;
+    bool is_local = probe >= 0 && index == if_nametoindex("lo");
+    route->table = is_local ? RT_TABLE_LOCAL_ : RT_TABLE_MAIN_;
+    route->protocol = is_local ? RTPROT_KERNEL_ : RTPROT_BOOT_;
+    route->scope = is_local ? RT_SCOPE_HOST_ : RT_SCOPE_UNIVERSE_;
+    route->type = probe < 0 ? RTN_UNREACHABLE_ :
+                  is_local ? RTN_LOCAL_ : RTN_UNICAST_;
 
     if (probe >= 0) {
         int err = netlink_add_attr(b, start, RTA_DST_, dst, addr_len);
@@ -874,10 +876,11 @@ static int netlink_build_route_dump(struct netlink_builder *b, uint32_t seq,
         struct rtmsg_ *route = netlink_payload(b, start);
         route->family = fake_family;
         route->dst_len = prefix;
-        route->table = RT_TABLE_MAIN_;
+        bool is_loopback = (ifa->ifa_flags & IFF_LOOPBACK) != 0;
+        route->table = is_loopback ? RT_TABLE_LOCAL_ : RT_TABLE_MAIN_;
         route->protocol = RTPROT_KERNEL_;
-        route->scope = (ifa->ifa_flags & IFF_LOOPBACK) ? RT_SCOPE_HOST_ : RT_SCOPE_LINK_;
-        route->type = RTN_UNICAST_;
+        route->scope = is_loopback ? RT_SCOPE_HOST_ : RT_SCOPE_LINK_;
+        route->type = is_loopback ? RTN_LOCAL_ : RTN_UNICAST_;
 
         if (prefix != 0) {
             err = netlink_add_attr(b, start, RTA_DST_, network, addr_len);
