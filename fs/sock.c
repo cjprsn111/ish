@@ -898,6 +898,60 @@ static int netlink_build_route_dump(struct netlink_builder *b, uint32_t seq,
     return err;
 }
 
+static int netlink_add_rule(struct netlink_builder *b, uint32_t seq,
+        uint8_t family, uint8_t table, uint32_t priority) {
+    size_t start = netlink_start_msg(b, RTM_NEWRULE_, NLM_F_MULTI_, seq,
+            sizeof(struct fib_rule_hdr_));
+    if (start == SIZE_MAX)
+        return _ENOMEM;
+
+    struct fib_rule_hdr_ *rule = netlink_payload(b, start);
+    rule->family = family;
+    rule->table = table;
+    rule->action = FR_ACT_TO_TBL_;
+    rule->flags = FIB_RULE_PERMANENT_;
+
+    int err = netlink_add_attr(b, start, FRA_PRIORITY_, &priority,
+            sizeof(priority));
+    if (err < 0)
+        return err;
+
+    uint32_t table32 = table;
+    return netlink_add_attr(b, start, FRA_TABLE_, &table32,
+            sizeof(table32));
+}
+
+static int netlink_build_rule_dump(struct netlink_builder *b, uint32_t seq,
+        uint8_t requested_family) {
+    // Linux installs these built-in policy-routing rules even when userspace
+    // has not configured additional rules. iOS has no Linux RPDB, so expose
+    // only the immutable baseline that matches the virtual route tables.
+    uint8_t families[2];
+    size_t count = 0;
+    if (requested_family == 0 || requested_family == AF_INET_)
+        families[count++] = AF_INET_;
+    if (requested_family == 0 || requested_family == AF_INET6_)
+        families[count++] = AF_INET6_;
+    if (count == 0)
+        return _EAFNOSUPPORT;
+
+    for (size_t i = 0; i < count; i++) {
+        uint8_t family = families[i];
+        int err = netlink_add_rule(b, seq, family, RT_TABLE_LOCAL_, 0);
+        if (err < 0)
+            return err;
+        err = netlink_add_rule(b, seq, family, RT_TABLE_MAIN_, 32766);
+        if (err < 0)
+            return err;
+        if (family == AF_INET_) {
+            err = netlink_add_rule(b, seq, family, RT_TABLE_DEFAULT_, 32767);
+            if (err < 0)
+                return err;
+        }
+    }
+    return 0;
+}
+
 static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
     if (len < sizeof(struct nlmsghdr_))
         return _EINVAL;
@@ -958,6 +1012,18 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
             else
                 err = _EOPNOTSUPP;
             break;
+        case RTM_GETRULE_: {
+            if ((request->flags & NLM_F_DUMP_) == 0) {
+                err = _EOPNOTSUPP;
+                break;
+            }
+            uint8_t requested_family = request->len > sizeof(*request)
+                ? *((const uint8_t *) data + sizeof(*request)) : 0;
+            err = netlink_build_rule_dump(&b, request->seq, requested_family);
+            if (err >= 0)
+                err = netlink_add_done(&b, request->seq);
+            break;
+        }
         default:
             err = _EOPNOTSUPP;
             break;

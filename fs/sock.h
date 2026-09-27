@@ -75,6 +75,8 @@ struct nlmsghdr_ {
 #define RTM_GETROUTE_ 26
 #define RTM_NEWNEIGH_ 28
 #define RTM_GETNEIGH_ 30
+#define RTM_NEWRULE_ 32
+#define RTM_GETRULE_ 34
 
 struct ifinfomsg_ {
     uint8_t family;
@@ -102,6 +104,18 @@ struct rtmsg_ {
     uint8_t protocol;
     uint8_t scope;
     uint8_t type;
+    uint32_t flags;
+};
+
+struct fib_rule_hdr_ {
+    uint8_t family;
+    uint8_t dst_len;
+    uint8_t src_len;
+    uint8_t tos;
+    uint8_t table;
+    uint8_t res1;
+    uint8_t res2;
+    uint8_t action;
     uint32_t flags;
 };
 
@@ -157,7 +171,15 @@ struct rtnl_link_stats_ {
 #define RTA_PRIORITY_ 6
 #define RTA_PREFSRC_ 7
 
+#define FRA_PRIORITY_ 6
+#define FRA_TABLE_ 15
+
+#define FIB_RULE_PERMANENT_ 0x00000001
+#define FR_ACT_TO_TBL_ 1
+
+#define RT_TABLE_DEFAULT_ 253
 #define RT_TABLE_MAIN_ 254
+#define RT_TABLE_LOCAL_ 255
 #define RTPROT_KERNEL_ 2
 #define RTPROT_BOOT_ 3
 #define RT_SCOPE_UNIVERSE_ 0
