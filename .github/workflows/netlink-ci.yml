@@ -386,16 +386,23 @@ jobs:
           fi
           echo 'PASS: policy-rule dumps expose Linux-compatible baseline rules'
 
-          echo '=== tc qdisc read-only compatibility ==='
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/tc qdisc show \
-            >tc-qdisc.txt 2>tc-qdisc.strace
-          cat tc-qdisc.txt || true
-          tail -n 120 tc-qdisc.strace || true
-          if grep -Eqi 'RTNETLINK answers:|Cannot open netlink socket|Operation not supported|Not supported' tc-qdisc.strace; then
-            echo 'FAIL: tc qdisc show hit a Netlink compatibility error'
-            exit 1
-          fi
-          echo 'PASS: tc qdisc show completes with an honest empty iOS qdisc view'
+          echo '=== tc read-only compatibility ==='
+          check_tc_dump() {
+            name="$1"
+            shift
+            timeout 20s ./build/ish -f netlink-rootfs /sbin/tc "$@" show \
+              >"tc-$name.txt" 2>"tc-$name.strace"
+            cat "tc-$name.txt" || true
+            tail -n 120 "tc-$name.strace" || true
+            if grep -Eqi 'RTNETLINK answers:|Cannot open netlink socket|Operation not supported|Not supported' "tc-$name.strace"; then
+              echo "FAIL: tc $* show hit a Netlink compatibility error"
+              exit 1
+            fi
+            echo "PASS: tc $* show completes with an honest empty iOS view"
+          }
+          check_tc_dump qdisc qdisc
+          check_tc_dump class class
+          check_tc_dump filter filter
 
           grep -Eq 'dev [^ ]+' iproute2-route.txt
           grep -Eq '^default([[:space:]]|$)' iproute2-route-v4.txt
