@@ -485,6 +485,8 @@ jobs:
           check_unsupported_mutation route-del route del 198.51.100.0/24 dev lo
           check_unsupported_mutation addr-add addr add 198.51.100.1/32 dev lo
           check_unsupported_mutation addr-del addr del 198.51.100.1/32 dev lo
+          check_unsupported_mutation rule-add rule add pref 1000 table main
+          check_unsupported_mutation rule-del rule del pref 1000 table main
 
           echo 'PASS: full iproute2 NETLINK_ROUTE compatibility checks passed'
 
