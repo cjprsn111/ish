@@ -340,6 +340,8 @@ jobs:
           run_iproute2 link link
           run_iproute2 link-stats -s link
           run_iproute2 neigh neigh
+          run_iproute2 rule-v4 -4 rule
+          run_iproute2 rule-v6 -6 rule
           run_iproute2 route route
           run_iproute2 route-v4 -4 route
           run_iproute2 route-v6 -6 route
@@ -372,6 +374,18 @@ jobs:
           echo 'PASS: iproute2 link statistics view completes with named interfaces'
           test -f iproute2-neigh.txt
           echo 'PASS: iproute2 neighbor-table dump completed'
+
+          grep -Eq '^0:[[:space:]]+from all lookup local([[:space:]]|$)' iproute2-rule-v4.txt
+          grep -Eq '^32766:[[:space:]]+from all lookup main([[:space:]]|$)' iproute2-rule-v4.txt
+          grep -Eq '^32767:[[:space:]]+from all lookup default([[:space:]]|$)' iproute2-rule-v4.txt
+          grep -Eq '^0:[[:space:]]+from all lookup local([[:space:]]|$)' iproute2-rule-v6.txt
+          grep -Eq '^32766:[[:space:]]+from all lookup main([[:space:]]|$)' iproute2-rule-v6.txt
+          if grep -Eq '^32767:' iproute2-rule-v6.txt; then
+            echo 'FAIL: IPv6 rule dump invented the IPv4 default-table rule'
+            exit 1
+          fi
+          echo 'PASS: policy-rule dumps expose Linux-compatible baseline rules'
+
           grep -Eq 'dev [^ ]+' iproute2-route.txt
           grep -Eq '^default([[:space:]]|$)' iproute2-route-v4.txt
           grep -Eq '^1\.1\.1\.1([[:space:]]|$)' iproute2-get-public-v4.txt
