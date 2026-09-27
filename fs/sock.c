@@ -1025,9 +1025,11 @@ static int netlink_handle_request(struct fd *fd, const void *data, size_t len) {
             break;
         }
         case RTM_GETQDISC_:
-            // Darwin/iOS does not expose Linux traffic-control qdiscs.
-            // Return an honest empty multipart dump so read-only capability
-            // probes such as "tc qdisc show" complete cleanly.
+        case RTM_GETTCLASS_:
+        case RTM_GETTFILTER_:
+            // Darwin/iOS does not expose Linux traffic-control qdiscs,
+            // classes, or filters. Return honest empty multipart dumps so
+            // read-only tc capability probes complete cleanly.
             if ((request->flags & NLM_F_DUMP_) != 0)
                 err = netlink_add_done(&b, request->seq);
             else
