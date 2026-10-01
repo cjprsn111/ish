@@ -407,15 +407,15 @@ jobs:
           check_tc_dump qdisc qdisc
           check_tc_dump class class
           check_tc_dump filter filter
-          timeout 20s ./build/ish -f netlink-rootfs /sbin/tc actions list \
+          timeout 20s ./build/ish -f netlink-rootfs /sbin/tc actions list action gact \
             >tc-action.txt 2>tc-action.strace
           cat tc-action.txt || true
           tail -n 120 tc-action.strace || true
           if grep -Eqi 'RTNETLINK answers:|Cannot open netlink socket|Operation not supported|Not supported' tc-action.strace; then
-            echo 'FAIL: tc actions list hit a Netlink compatibility error'
+            echo 'FAIL: tc actions list action gact hit a Netlink compatibility error'
             exit 1
           fi
-          echo 'PASS: tc actions list completes with an honest empty iOS view'
+          echo 'PASS: tc actions list action gact completes with an honest empty iOS view'
 
           grep -Eq 'dev [^ ]+' iproute2-route.txt
           grep -Eq '^default([[:space:]]|$)' iproute2-route-v4.txt
